@@ -1,0 +1,10 @@
+node_modules/
+dist/
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+.env*
+.claude/
+docs/*.err
+demo/*.log
+demo/.address

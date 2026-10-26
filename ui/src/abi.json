@@ -240,24 +240,6 @@
  },
  {
   "type": "function",
-  "name": "fund",
-  "inputs": [
-   {
-    "name": "id",
-    "type": "uint256",
-    "internalType": "uint256"
-   },
-   {
-    "name": "amount",
-    "type": "uint256",
-    "internalType": "uint256"
-   }
-  ],
-  "outputs": [],
-  "stateMutability": "nonpayable"
- },
- {
-  "type": "function",
   "name": "refund",
   "inputs": [
    {
@@ -475,31 +457,6 @@
  },
  {
   "type": "event",
-  "name": "Funded",
-  "inputs": [
-   {
-    "name": "roundId",
-    "type": "uint256",
-    "indexed": true,
-    "internalType": "uint256"
-   },
-   {
-    "name": "funder",
-    "type": "address",
-    "indexed": true,
-    "internalType": "address"
-   },
-   {
-    "name": "amount",
-    "type": "uint256",
-    "indexed": false,
-    "internalType": "uint256"
-   }
-  ],
-  "anonymous": false
- },
- {
-  "type": "event",
   "name": "Refunded",
   "inputs": [
    {
@@ -676,6 +633,11 @@
  {
   "type": "error",
   "name": "NothingToClaim",
+  "inputs": []
+ },
+ {
+  "type": "error",
+  "name": "OraclePaused",
   "inputs": []
  },
  {

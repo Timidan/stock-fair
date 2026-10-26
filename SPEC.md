@@ -26,9 +26,8 @@ This is the shared contract between `contracts/` (owned by Astra) and `ui/` (own
 
 ## Round lifecycle
 1. `createRound(assets[], lockAt, endAt, pot)`
-   - Anyone can call it. The caller is the round's **sponsor** and transfers `pot` USDG in.
-   - Takes 2–4 assets, each matching a constructor-configured allowed `(token, feed)` pair exposed by `allowedAssets()`. Requires `now < lockAt < endAt`.
-   - `fund(roundId, amount)` lets anyone add USDG before `lockAt`.
+   - Anyone can call it. The caller is the round's **sponsor** and transfers `pot > 0` USDG in.
+   - Takes 2–4 distinct asset tokens, each matching a constructor-configured allowed `(token, feed)` pair exposed by `allowedAssets()`. Requires `now < lockAt < endAt`.
 2. `vote(roundId, assetIndex, wifAmount)`
    - Only before `lockAt`.
    - Transfers `wifAmount` of WIF from the voter **straight to the burn address**. The contract never holds WIF.
@@ -38,10 +37,10 @@ This is the shared contract between `contracts/` (owned by Astra) and `ui/` (own
    - Anyone can call it once `now > endAt`.
    - For each asset and each boundary time `t` (`lockAt` for the start, `endAt` for the end), the caller passes the Chainlink round that was current at `t`. The contract checks:
      - `updatedAt(r) <= t`
-     - either `getRoundData(r+1)` reverts or returns `updatedAt == 0` (no successor yet), or the next round's `updatedAt > t`
+     - either the next round's `updatedAt > t`, or, when `getRoundData(r+1)` reverts or returns `updatedAt == 0`, `r` equals the feed's current `latestRoundData()` round id
      - `t - updatedAt(r) <= MAX_STALE` (a constant, e.g. 3 days)
    - Return = `end / start - 1`, in fixed point. The winner set is the asset(s) with the highest return. Ties share.
-   - **Void** if any proof fails the staleness bound, if any asset token's `oraclePaused()` is true at settle time, or if nobody settles within `SETTLE_WINDOW` (e.g. 7 days) after `endAt` (`voidExpired` is callable by anyone).
+   - Reverts with `OraclePaused()` if any asset token's `oraclePaused()` is true at settle time, allowing retries; **void** if any proof fails the staleness bound or if nobody settles within `SETTLE_WINDOW` (e.g. 7 days) after `endAt` (`voidExpired` is callable by anyone).
 4. `claim(roundId)`
    - Payout = `pot × (voter's weight on winning assets) / (total weight on winning assets)`.
    - One claim per voter. Leftover dust stays in the contract.
@@ -50,7 +49,7 @@ This is the shared contract between `contracts/` (owned by Astra) and `ui/` (own
 ## Views the UI needs
 - `rounds(id)`: assets, lockAt, endAt, pot, sponsor, state (Open / Locked / Settled / Void), and the start/end prices and winners once settled.
 - `assetTotals(id)` and `userWeights(id, user)`, plus `claimable(id, user)`.
-- Events: `RoundCreated`, `Funded`, `Voted(roundId, voter, assetIndex, amount)`, `Settled(roundId, startPrices, endPrices, winnerMask)`, `Voided`, `Claimed`, `Refunded`. The UI builds its leaderboard and history from these, so there's no backend.
+- Events: `RoundCreated`, `Voted(roundId, voter, assetIndex, amount)`, `Settled(roundId, startPrices, endPrices, winnerMask)`, `Voided`, `Claimed`, `Refunded`. The UI builds its leaderboard and history from these, so there's no backend.
 
 ## Out of scope for v1
 - Fee or USDG→WIF buyback. Add it once there's a route with real depth; the WIF/USDG pool has about $129 of USDG.

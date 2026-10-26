@@ -28,14 +28,16 @@ export function Flame({ heat, flare, label }: { heat: number; flare: number; lab
       // Even an empty altar keeps an ember; the sqrt keeps small shares visible.
       const strength = Math.min(1, 0.3 + 0.7 * Math.sqrt(level) + boost.current * 0.5);
       const decay = 1.5 - 0.3 * strength; // height comes mostly from strength: empty ≈ quarter, full ≈ top
+      // The base burns only in the middle ~60% so the flame can sway without reaching the canvas sides.
       for (let x = 0; x < W; x++) {
-        const edge = 1 - Math.abs(x - (W - 1) / 2) / (W / 2);
-        fire[(H - 1) * W + x] = Math.random() < 0.8 ? Math.round(MAX * strength * Math.min(1, edge * 1.8)) : 0;
+        const edge = Math.max(0, 1 - Math.abs(x - (W - 1) / 2) / (W * 0.32));
+        fire[(H - 1) * W + x] = Math.random() < 0.8 ? Math.round(MAX * strength * Math.min(1, edge * 1.6)) : 0;
       }
       for (let y = 0; y < H - 1; y++)
         for (let x = 0; x < W; x++) {
           const r = Math.random();
-          const nx = Math.min(W - 1, Math.max(0, x + Math.round(r * 2 - 1)));
+          const nx = x + Math.round(r * 2 - 1);
+          if (nx < 0 || nx >= W) continue; // embers that drift off the side die instead of piling into a hard edge
           fire[y * W + nx] = Math.max(0, fire[(y + 1) * W + x] - Math.floor(r * decay + 0.4));
         }
       ctx.clearRect(0, 0, canvas.width, canvas.height);

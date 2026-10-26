@@ -16,16 +16,18 @@ async function latest(feed: Address): Promise<Price | null> {
   }
 }
 
-// The price the contract will settle against: the last round at or before `t`.
-async function priceAt(feed: Address, t: number): Promise<number | null> {
+type RoundData = readonly [bigint, bigint, bigint, bigint, bigint];
+
+// The Chainlink round current at `t`: the last one at or before it. This is exactly the proof `settle` checks.
+export async function roundAt(feed: Address, t: number): Promise<{ id: bigint; price: number } | null> {
   try {
-    let [id, answer, , updatedAt] = (await client.readContract({ address: feed, abi: feedAbi, functionName: "latestRoundData" })) as readonly [bigint, bigint, bigint, bigint, bigint];
-    for (let i = 0; i < 50 && Number(updatedAt) > t; i++) {
+    let [id, answer, , updatedAt] = (await client.readContract({ address: feed, abi: feedAbi, functionName: "latestRoundData" })) as RoundData;
+    for (let i = 0; i < 200 && Number(updatedAt) > t; i++) {
       id -= 1n;
-      [, answer, , updatedAt] = (await client.readContract({ address: feed, abi: feedAbi, functionName: "getRoundData", args: [id] })) as readonly [bigint, bigint, bigint, bigint, bigint];
+      [, answer, , updatedAt] = (await client.readContract({ address: feed, abi: feedAbi, functionName: "getRoundData", args: [id] })) as RoundData;
       if (updatedAt === 0n) return null;
     }
-    return Number(updatedAt) <= t ? Number(answer) / 1e8 : null;
+    return Number(updatedAt) <= t ? { id, price: Number(answer) / 1e8 } : null;
   } catch {
     return null;
   }
@@ -49,8 +51,12 @@ type RawRound = {
   startPrices: readonly bigint[]; endPrices: readonly bigint[]; winnerMask: bigint;
 };
 
+export type Past = { id: bigint; winnerMask: number; pot: bigint; burned: bigint; state: (typeof STATES)[number] };
+
 export type Fair = {
   round: Round | null | undefined;
+  past: Past[];
+  offline: boolean;
   prices: (Price | null)[];
   startPrices: (number | null)[];
   reading: Reading | null;
@@ -59,14 +65,14 @@ export type Fair = {
 
 // One poller for everything on the page: prices, the latest round, new burns and the settlement.
 export function useFair(refresh: number): Fair {
-  const [fair, setFair] = useState<Fair>({ round: undefined, prices: ASSETS.map(() => null), startPrices: ASSETS.map(() => null), reading: null, flares: ASSETS.map(() => 0) });
+  const [fair, setFair] = useState<Fair>({ round: undefined, past: [], offline: false, prices: ASSETS.map(() => null), startPrices: ASSETS.map(() => null), reading: null, flares: ASSETS.map(() => 0) });
   const seen = useRef<{ block: bigint | null; round: bigint | null }>({ block: null, round: null });
 
   useEffect(() => {
     let alive = true;
     const load = async () => {
       const prices = await Promise.all(ASSETS.map((a) => latest(a.feed)));
-      let round: Round | null = null, reading: Reading | null = null, startPrices: (number | null)[] = ASSETS.map(() => null);
+      let round: Round | null = null, reading: Reading | null = null, past: Past[] = [], startPrices: (number | null)[] = ASSETS.map(() => null);
       const bumps = ASSETS.map(() => 0);
       if (STOCK_FAIR) {
         const address = STOCK_FAIR;
@@ -82,7 +88,7 @@ export function useFair(refresh: number): Fair {
             state: STATES[raw.state], winnerMask: Number(raw.winnerMask), totals: [...totals],
           };
           const now = Math.floor(Date.now() / 1000);
-          if (now >= round.lockAt && round.state !== "Settled") startPrices = await Promise.all(ASSETS.map((a) => priceAt(a.feed, round!.lockAt)));
+          if (now >= round.lockAt && round.state !== "Settled") startPrices = await Promise.all(ASSETS.map((a) => roundAt(a.feed, round!.lockAt).then((r) => r?.price ?? null)));
           const head = await client.getBlockNumber();
           if (round.state === "Settled") {
             // The tx link is a nicety: a bounded log search that may fail must not hide the result.
@@ -100,12 +106,23 @@ export function useFair(refresh: number): Fair {
             for (const v of votes) bumps[Number((v.args as { assetIndex: bigint }).assetIndex)]++;
           }
           seen.current = { block: head, round: id };
+          const older = Array.from({ length: Math.min(5, Number(count) - 1) }, (_, k) => count - 1n - BigInt(k));
+          past = await Promise.all(
+            older.map(async (pid) => {
+              const [r, t] = (await Promise.all([
+                client.readContract({ address, abi: stockFairAbi, functionName: "rounds", args: [pid] }),
+                client.readContract({ address, abi: stockFairAbi, functionName: "assetTotals", args: [pid] }),
+              ])) as [RawRound, readonly bigint[]];
+              return { id: pid, winnerMask: Number(r.winnerMask), pot: r.pot, burned: t.reduce((x, y) => x + y, 0n), state: STATES[r.state] };
+            }),
+          );
         }
       }
-      if (alive) setFair((f) => ({ round, prices, startPrices, reading, flares: f.flares.map((n, i) => n + bumps[i]) }));
+      if (alive) setFair((f) => ({ round, past, offline: prices.every((p) => p == null), prices, startPrices, reading, flares: f.flares.map((n, i) => n + bumps[i]) }));
     };
-    load().catch(() => {});
-    const t = setInterval(() => load().catch(() => {}), POLL);
+    const run = () => load().catch(() => alive && setFair((f) => ({ ...f, offline: true })));
+    run();
+    const t = setInterval(run, POLL);
     return () => {
       alive = false;
       clearInterval(t);

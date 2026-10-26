@@ -8,3 +8,4 @@ contracts/broadcast/
 docs/*.err
 demo/*.log
 demo/.address
+.agy-staff/

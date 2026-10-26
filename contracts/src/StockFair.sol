@@ -48,6 +48,7 @@ contract StockFair {
     error WrongTime();
     error WrongState();
     error BadProof();
+    error OraclePaused();
     error TransferFailed();
     error Reentrant();
     error NothingToClaim();
@@ -56,7 +57,6 @@ contract StockFair {
     event RoundCreated(
         uint256 indexed roundId, address indexed sponsor, Asset[] assets, uint256 lockAt, uint256 endAt, uint256 pot
     );
-    event Funded(uint256 indexed roundId, address indexed funder, uint256 amount);
     event Voted(uint256 indexed roundId, address indexed voter, uint256 assetIndex, uint256 amount);
     event Settled(uint256 indexed roundId, int256[] startPrices, int256[] endPrices, uint256 winnerMask);
     event Voided(uint256 indexed roundId);
@@ -83,6 +83,7 @@ contract StockFair {
     {
         if (assets.length < 2 || assets.length > 4) revert InvalidAssets();
         if (block.timestamp >= lockAt || lockAt >= endAt) revert WrongTime();
+        if (pot == 0) revert InvalidRound();
         id = ++roundCount;
         Round storage r = _rounds[id];
         r.lockAt = lockAt;
@@ -91,6 +92,9 @@ contract StockFair {
         r.sponsor = msg.sender;
         for (uint256 i; i < assets.length; ++i) {
             if (assets[i].token.code.length == 0 || assets[i].feed.code.length == 0) revert InvalidAssets();
+            for (uint256 j; j < i; ++j) {
+                if (assets[i].token == assets[j].token) revert InvalidAssets();
+            }
             bool allowed;
             for (uint256 j; j < _allowedAssets.length; ++j) {
                 if (assets[i].token == _allowedAssets[j].token && assets[i].feed == _allowedAssets[j].feed) {
@@ -104,14 +108,6 @@ contract StockFair {
         }
         if (!USDG.transferFrom(msg.sender, address(this), pot)) revert TransferFailed();
         emit RoundCreated(id, msg.sender, assets, lockAt, endAt, pot);
-    }
-
-    function fund(uint256 id, uint256 amount) external nonReentrant {
-        Round storage r = _round(id);
-        if (block.timestamp >= r.lockAt) revert WrongTime();
-        r.pot += amount;
-        if (!USDG.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
-        emit Funded(id, msg.sender, amount);
     }
 
     function vote(uint256 id, uint256 assetIndex, uint256 wifAmount) external nonReentrant {
@@ -136,9 +132,10 @@ contract StockFair {
         int256 best = type(int256).min;
         uint256 mask;
         for (uint256 i; i < n; ++i) {
+            if (IStockToken(r.assets[i].token).oraclePaused()) revert OraclePaused();
             (int256 start, bool staleStart) = _priceAt(r.assets[i].feed, startRoundIds[i], r.lockAt);
             (int256 end, bool staleEnd) = _priceAt(r.assets[i].feed, endRoundIds[i], r.endAt);
-            if (IStockToken(r.assets[i].token).oraclePaused() || staleStart || staleEnd) invalid = true;
+            if (staleStart || staleEnd) invalid = true;
             starts[i] = start;
             ends[i] = end;
             int256 gain = end * 1e18 / start - 1e18;
@@ -238,11 +235,18 @@ contract StockFair {
     function _priceAt(address feed, uint80 roundId, uint256 timestamp) private view returns (int256 price, bool stale) {
         (uint80 returnedId, int256 answer,, uint256 updatedAt,) = AggregatorV3(feed).getRoundData(roundId);
         if (returnedId != roundId || answer <= 0 || updatedAt == 0 || updatedAt > timestamp) revert BadProof();
+        uint256 nextUpdatedAt;
         try AggregatorV3(feed).getRoundData(roundId + 1) returns (
-            uint80, int256, uint256, uint256 nextUpdatedAt, uint80
+            uint80, int256, uint256, uint256 successorUpdatedAt, uint80
         ) {
-            if (nextUpdatedAt != 0 && nextUpdatedAt <= timestamp) revert BadProof();
+            nextUpdatedAt = successorUpdatedAt;
         } catch {}
+        if (nextUpdatedAt == 0) {
+            (uint80 latestId,,,,) = AggregatorV3(feed).latestRoundData();
+            if (roundId != latestId) revert BadProof();
+        } else if (nextUpdatedAt <= timestamp) {
+            revert BadProof();
+        }
         return (answer, timestamp - updatedAt > MAX_STALE);
     }
 }

@@ -3,13 +3,13 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {StockFair} from "../src/StockFair.sol";
-import {IERC20, AggregatorV3} from "../src/Interfaces.sol";
+import {IERC20, AggregatorV3, IStockToken} from "../src/Interfaces.sol";
 import {Assets} from "../script/Assets.sol";
 import {FindRound} from "../script/FindRound.s.sol";
 import {ReplayFeed} from "./mocks/ReplayFeed.sol";
 
 contract StockFairTest is Test {
-    uint256 constant FORK_BLOCK = 98_482_863; // 2026-10-26 14:29:59 UTC
+    uint256 constant FORK_BLOCK = 98_540_840; // 2026-10-26 16:07:36 UTC
     uint256 constant LOCK = 1_792_764_000; // Friday 2026-10-23 14:00 UTC
     uint256 constant END = 1_792_785_600; // Friday 2026-10-23 20:00 UTC
     StockFair fair;
@@ -36,8 +36,7 @@ contract StockFairTest is Test {
 
     function testFullRound() public {
         assertEq(abi.encode(fair.allowedAssets()), abi.encode(assets));
-        uint256 id = fair.createRound(assets, LOCK, END, 100e6);
-        fair.fund(id, 20e6);
+        uint256 id = fair.createRound(assets, LOCK, END, 120e6);
         IERC20 wif = fair.WIF();
         uint256 burnedBefore = wif.balanceOf(fair.BURN());
         deal(address(wif), alice, 12e18);
@@ -105,6 +104,54 @@ contract StockFairTest is Test {
         vm.expectRevert(StockFair.BadProof.selector);
         fair.settle(id, starts, ends);
         assertEq(uint256(fair.rounds(id).state), uint256(StockFair.State.Locked));
+    }
+
+    function testRetiredPhaseWithoutSuccessorReverts() public {
+        uint256 id = fair.createRound(assets, LOCK, END, 120e6);
+        vm.warp(END + 1);
+        address feed = assets[0].feed;
+        bytes memory successor = abi.encodeCall(AggregatorV3.getRoundData, (starts[0] + 1));
+        bytes memory latest = abi.encode(starts[0] + uint80(1 << 64), 0, 0, 0, 0);
+        vm.mockCall(feed, abi.encodeCall(AggregatorV3.latestRoundData, ()), latest);
+        vm.mockCallRevert(feed, successor, "No data");
+        vm.expectRevert(StockFair.BadProof.selector);
+        fair.settle(id, starts, ends);
+        vm.clearMockedCalls();
+        vm.mockCall(feed, abi.encodeCall(AggregatorV3.latestRoundData, ()), latest);
+        vm.mockCall(feed, successor, abi.encode(0, 0, 0, 0, 0));
+        vm.expectRevert(StockFair.BadProof.selector);
+        fair.settle(id, starts, ends);
+    }
+
+    function testFundUnavailable() public {
+        uint256 id = fair.createRound(assets, LOCK, END, 100e6);
+        (bool success,) = address(fair).call(abi.encodeWithSignature("fund(uint256,uint256)", id, 20e6));
+        assertFalse(success);
+        assertEq(fair.rounds(id).pot, 100e6);
+        assertEq(fair.USDG().balanceOf(address(this)), 20e6);
+    }
+
+    function testPausedOracleCanRetrySettlement() public {
+        uint256 id = fair.createRound(assets, LOCK, END, 120e6);
+        vm.warp(END + 1);
+        vm.mockCall(assets[0].token, abi.encodeCall(IStockToken.oraclePaused, ()), abi.encode(true));
+        vm.expectRevert(StockFair.OraclePaused.selector);
+        fair.settle(id, starts, ends);
+        assertEq(uint256(fair.rounds(id).state), uint256(StockFair.State.Locked));
+        vm.clearMockedCalls();
+        fair.settle(id, starts, ends);
+        assertEq(uint256(fair.rounds(id).state), uint256(StockFair.State.Settled));
+    }
+
+    function testDuplicateAssetReverts() public {
+        assets[1] = assets[0];
+        vm.expectRevert(StockFair.InvalidAssets.selector);
+        fair.createRound(assets, LOCK, END, 120e6);
+    }
+
+    function testZeroPotReverts() public {
+        vm.expectRevert(StockFair.InvalidRound.selector);
+        fair.createRound(assets, LOCK, END, 0);
     }
 
     function testSettleWithLatestEndRound() public {

@@ -1,0 +1,30 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+SC:wght@600;700&family=Inter:wght@500&display=swap" rel="stylesheet">
+<style>
+html,body{margin:0;width:1200px;height:630px;background:#0d0d0d;overflow:hidden;color:#f2f2f2;font-family:Inter,sans-serif}
+.bg{position:absolute;inset:0;background:url(../art/temple.webp) center/cover;opacity:.38}
+.row{position:absolute;bottom:40px;left:0;right:0;display:flex;justify-content:center;gap:28px}
+.row div{position:relative;width:170px}.row img{width:170px;display:block}.row canvas{position:absolute;left:37px;bottom:114px;width:96px;height:189px}
+h1{position:absolute;top:70px;left:0;right:0;margin:0;text-align:center;font:700 72px/1 "Cormorant SC",serif}
+p{position:absolute;top:168px;left:0;right:0;margin:0;text-align:center;font-size:26px;color:#f2f2f2b0}
+p b{color:#d4fc50;font-weight:500}
+.mark{position:absolute;top:36px;left:44px;width:56px}
+</style></head><body>
+<div class="bg"></div><img class="mark" src="mark-static.svg">
+<h1>Stock Fair</h1>
+<p>Burn <b>$WIF</b> on the stock you think climbs most. Split the pot.</p>
+<div class="row"><div><canvas data-heat="0.27" width="244" height="480"></canvas><img src="../art/brazier.webp"></div><div><canvas data-heat="0.1" width="244" height="480"></canvas><img src="../art/brazier.webp"></div><div><canvas data-heat="0.58" width="244" height="480"></canvas><img src="../art/brazier.webp"></div><div><canvas data-heat="0.06" width="244" height="480"></canvas><img src="../art/brazier.webp"></div></div>
+<script>
+// Same automaton as ui/src/Flame.tsx, run to a still frame. Heats are round 1's burn shares.
+const W=30,H=60,MAX=36,CELL=8;
+for(const c of document.querySelectorAll('canvas')){
+  const level=+c.dataset.heat, ctx=c.getContext('2d'), fire=new Uint8Array(W*H);
+  const strength=Math.min(1,0.3+0.7*Math.sqrt(level)), decay=1.5-0.3*strength;
+  for(let k=0;k<160;k++){
+    for(let x=0;x<W;x++){const e=Math.max(0,1-Math.abs(x-(W-1)/2)/(W*0.32));fire[(H-1)*W+x]=Math.random()<0.8?Math.round(MAX*strength*Math.min(1,e*1.6)):0}
+    for(let y=0;y<H-1;y++)for(let x=0;x<W;x++){const r=Math.random(),nx=x+Math.round(r*2-1);if(nx<0||nx>=W)continue;fire[y*W+nx]=Math.max(0,fire[(y+1)*W+x]-Math.floor(r*decay+0.4))}
+  }
+  for(const [col,lo,hi] of [['#d4fc50',0.06,0.7],['#f7f5f1',0.7,1.01]]){ctx.fillStyle=col;ctx.beginPath();
+    for(let y=0;y<H;y++)for(let x=0;x<W;x++){const v=fire[y*W+x]/MAX;if(v<lo||v>=hi)continue;const cx=x*CELL+CELL/2+(y%2)*CELL/2,cy=y*CELL+CELL/2;ctx.moveTo(cx,cy);ctx.arc(cx,cy,CELL/2*Math.min(1,v*1.25),0,7)}ctx.fill()}
+}
+</script></body></html>

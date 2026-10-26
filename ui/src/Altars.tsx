@@ -11,25 +11,27 @@ type Props = {
   selected: number | null;
   onSelect: (i: number) => void;
   flares: number[];
+  pickable: boolean;
 };
 
-export function Altars({ prices, shares, burned, returns, winners, selected, onSelect, flares }: Props) {
+export function Altars({ prices, shares, burned, returns, winners, selected, onSelect, flares, pickable }: Props) {
   return (
-    <div className="altars" role="radiogroup" aria-label="Pick a stock">
+    <div className={`altars${pickable ? " pickable" : ""}`} role={pickable ? "radiogroup" : undefined} aria-label={pickable ? "Pick a stock" : undefined}>
       {ASSETS.map((a, i) => {
         const r = returns[i];
         return (
           <button
             key={a.symbol}
-            role="radio"
-            aria-checked={selected === i}
+            role={pickable ? "radio" : undefined}
+            aria-checked={pickable ? selected === i : undefined}
+            disabled={!pickable}
             className={`altar${selected === i ? " selected" : ""}${winners[i] ? " winner" : ""}`}
             onClick={() => onSelect(i)}
           >
             <span className="stage">
               <img className="brazier" src="/art/brazier.webp" alt="" draggable={false} />
               <span className="fire">
-                <Flame heat={shares[i]} flare={flares[i]} label={`${burned[i]} $WIF burned on ${a.symbol}`} />
+                <Flame heat={Math.min(1, shares[i] + (selected === i ? 0.12 : 0))} flare={flares[i]} label={`${burned[i]} $WIF burned on ${a.symbol}`} />
               </span>
             </span>
             <span className="symbol">{a.symbol}</span>

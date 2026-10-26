@@ -1,3 +1,4 @@
+import type React from "react";
 import { ASSETS } from "./chain";
 
 export type Reading = { roundId: bigint; start: number[]; end: number[]; winnerMask: number; tx: string };
@@ -6,7 +7,7 @@ export type Reading = { roundId: bigint; start: number[]; end: number[]; winnerM
 export function Oracle({ reading, txUrl }: { reading: Reading | null; txUrl: (h: string) => string }) {
   return (
     <section className="oracle" aria-labelledby="oracle-title">
-      <div className="stele">
+      <div className="stele reveal">
         <h2 id="oracle-title">{reading ? `Round ${reading.roundId} · the reading` : "The oracle's reading"}</h2>
         {reading ? (
           <table>
@@ -18,7 +19,7 @@ export function Oracle({ reading, txUrl }: { reading: Reading | null; txUrl: (h:
                 const move = reading.end[i] / reading.start[i] - 1;
                 const won = ((reading.winnerMask >> i) & 1) === 1;
                 return (
-                  <tr key={a.symbol} className={won ? "won" : ""}>
+                  <tr key={a.symbol} className={won ? "won" : ""} style={{ "--i": i } as React.CSSProperties}>
                     <th scope="row">{a.symbol}{won && " ✦"}</th>
                     <td>${reading.start[i].toFixed(2)}</td>
                     <td>${reading.end[i].toFixed(2)}</td>
@@ -33,10 +34,10 @@ export function Oracle({ reading, txUrl }: { reading: Reading | null; txUrl: (h:
         )}
         {reading?.tx && <a href={txUrl(reading.tx)} target="_blank" rel="noreferrer">Settlement transaction</a>}
       </div>
-      <ol className="steps">
-        <li><span><b>Pick</b> a stock before the round locks.</span></li>
-        <li><span><b>Burn</b> $WIF on it. Every $WIF is one vote, sent to the dead address.</span></li>
-        <li><span><b>Split</b> the USDG pot with everyone who burned on the top stock, in proportion to their burn.</span></li>
+      <ol className="steps reveal">
+        <li style={{ "--i": 0 } as React.CSSProperties}><span><b>Pick</b> a stock before the round locks.</span></li>
+        <li style={{ "--i": 1 } as React.CSSProperties}><span><b>Burn</b> $WIF on it. Every $WIF is one vote, sent to the dead address.</span></li>
+        <li style={{ "--i": 2 } as React.CSSProperties}><span><b>Split</b> the USDG pot with everyone who burned on the top stock, in proportion to their burn.</span></li>
       </ol>
     </section>
   );

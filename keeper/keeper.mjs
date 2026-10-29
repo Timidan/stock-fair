@@ -8,7 +8,9 @@ import { createPublicClient, createWalletClient, defineChain, http, parseAbi, pa
 import { privateKeyToAccount } from "viem/accounts";
 
 const env = process.env;
-const chain = defineChain({ id: 4663, name: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: ["https://rpc.mainnet.chain.robinhood.com"] } } });
+// The base fee can jump more than viem's default 20% headroom between quote and send. A transaction pays only
+// the base fee, so a 3x cap costs nothing extra.
+const chain = defineChain({ id: 4663, name: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: ["https://rpc.mainnet.chain.robinhood.com"] } }, fees: { baseFeeMultiplier: 3 } });
 const transport = http(env.RPC || undefined);
 const client = createPublicClient({ chain, transport });
 const account = privateKeyToAccount(env.KEEPER_KEY);

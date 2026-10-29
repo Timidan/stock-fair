@@ -1,8 +1,10 @@
-# Job research-mvpfqen9-aba070c3 (research, done)
+# Security review of StockFair.sol (26 Oct)
+
+This review covers the first version of the contract, so its line links point at commit [4cea97c](https://github.com/Timidan/stock-fair/tree/4cea97c56496b7438e487596265a59c3add1ad70). The triage at the end lists what was fixed.
 
 ## Summary
 
-A security review of the immutable [`StockFair.sol`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol) contract was conducted against the specifications in [`SPEC.md`](file:///home/timidan/Desktop/stock-fair/SPEC.md) and live state on Robinhood Chain mainnet (chain ID 4663). While core mechanics such as non-reentrant state transitions, direct WIF burns to `0x...dEaD`, and absence of double-spend paths between `claim()` and `refund()` are soundly implemented, two high-severity and two medium-severity vulnerabilities exist. Most critically, `_priceAt()` relies on a naive `roundId + 1` successor check that breaks across Chainlink proxy phase upgrades, enabling any caller to permanently void any round or inject stale prices once an aggregator upgrade occurs. Additionally, `fund()` allows third-party funding that is unconditionally surrendered to `r.sponsor` upon refund, and checking the mutable `oraclePaused()` flag at settlement time exposes rounds to griefing and freeze attacks.
+A security review of the immutable [`StockFair.sol`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol) contract was conducted against the specifications in [`SPEC.md`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/SPEC.md) and live state on Robinhood Chain mainnet (chain ID 4663). While core mechanics such as non-reentrant state transitions, direct WIF burns to `0x...dEaD`, and absence of double-spend paths between `claim()` and `refund()` are soundly implemented, two high-severity and two medium-severity vulnerabilities exist. Most critically, `_priceAt()` relies on a naive `roundId + 1` successor check that breaks across Chainlink proxy phase upgrades, enabling any caller to permanently void any round or inject stale prices once an aggregator upgrade occurs. Additionally, `fund()` allows third-party funding that is unconditionally surrendered to `r.sponsor` upon refund, and checking the mutable `oraclePaused()` flag at settlement time exposes rounds to griefing and freeze attacks.
 
 ---
 
@@ -19,7 +21,7 @@ A security review of the immutable [`StockFair.sol`](file:///home/timidan/Deskto
 ### 1. Phase-Unaware Successor Check Enables Permanent Round Voiding (DoS) and Stale Price Injection
 
 - **Severity**: High (Escalates to Critical post-feed upgrade)
-- **Exact Line**: [`contracts/src/StockFair.sol:241-245`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L241-L245) (in `_priceAt`), invoked at [`contracts/src/StockFair.sol:139-140`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L139-L140) (in `settle`)
+- **Exact Line**: [`contracts/src/StockFair.sol:241-245`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L241-L245) (in `_priceAt`), invoked at [`contracts/src/StockFair.sol:139-140`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L139-L140) (in `settle`)
 - **Primary Evidence**:
   - `StockFair.sol` lines 241–245:
     ```solidity
@@ -70,7 +72,7 @@ A security review of the immutable [`StockFair.sol`](file:///home/timidan/Deskto
 ### 2. Sponsor Pot Hijacking / Third-Party Funder Loss on Refund
 
 - **Severity**: High
-- **Exact Line**: [`contracts/src/StockFair.sol:180-192`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L180-L192) (`refund`), interacting with [`contracts/src/StockFair.sol:109-115`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L109-L115) (`fund`)
+- **Exact Line**: [`contracts/src/StockFair.sol:180-192`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L180-L192) (`refund`), interacting with [`contracts/src/StockFair.sol:109-115`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L109-L115) (`fund`)
 - **Primary Evidence**:
   - `StockFair.sol:112`: `r.pot += amount;` accepts USDG from arbitrary callers without recording individual contributions.
   - `StockFair.sol:184-190`:
@@ -104,7 +106,7 @@ A security review of the immutable [`StockFair.sol`](file:///home/timidan/Deskto
 ### 3. Settle Timing Griefing via Transient `oraclePaused()` Check
 
 - **Severity**: Medium
-- **Exact Line**: [`contracts/src/StockFair.sol:141`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L141), [`contracts/src/StockFair.sol:152-156`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L152-L156)
+- **Exact Line**: [`contracts/src/StockFair.sol:141`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L141), [`contracts/src/StockFair.sol:152-156`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L152-L156)
 - **Primary Evidence**:
   - `StockFair.sol:141`:
     ```solidity
@@ -135,7 +137,7 @@ A security review of the immutable [`StockFair.sol`](file:///home/timidan/Deskto
 ### 4. Unhandled Revert in `IStockToken.oraclePaused()` Freezes Settlement
 
 - **Severity**: Medium
-- **Exact Line**: [`contracts/src/StockFair.sol:141`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L141)
+- **Exact Line**: [`contracts/src/StockFair.sol:141`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L141)
 - **Primary Evidence**:
   - `StockFair.sol:141`:
     `if (IStockToken(r.assets[i].token).oraclePaused() || staleStart || staleEnd) invalid = true;`
@@ -160,7 +162,7 @@ A security review of the immutable [`StockFair.sol`](file:///home/timidan/Deskto
 ### 5. `createRound` Allows Duplicate Assets, Distorting Winning Weights
 
 - **Severity**: Low
-- **Exact Line**: [`contracts/src/StockFair.sol:92-104`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L92-L104)
+- **Exact Line**: [`contracts/src/StockFair.sol:92-104`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L92-L104)
 - **Primary Evidence**:
   - `StockFair.sol:92-104`:
     ```solidity
@@ -195,7 +197,7 @@ A security review of the immutable [`StockFair.sol`](file:///home/timidan/Deskto
 ### 6. Zero `pot` Allowed in `createRound`, Enabling Honey-Pot Rounds
 
 - **Severity**: Low
-- **Exact Line**: [`contracts/src/StockFair.sol:79-107`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L79-L107)
+- **Exact Line**: [`contracts/src/StockFair.sol:79-107`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L79-L107)
 - **Primary Evidence**:
   - `createRound` has no check `if (pot == 0) revert ...`.
   - `USDG.transferFrom(msg.sender, address(this), 0)` succeeds without transferring tokens.
@@ -211,7 +213,7 @@ A security review of the immutable [`StockFair.sol`](file:///home/timidan/Deskto
 ### 7. Zero / Negative Price Reverts `settle()` Rather Than Marking Proof Invalid
 
 - **Severity**: Low
-- **Exact Line**: [`contracts/src/StockFair.sol:240`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L240)
+- **Exact Line**: [`contracts/src/StockFair.sol:240`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L240)
 - **Primary Evidence**:
   - `StockFair.sol:240`:
     `if (returnedId != roundId || answer <= 0 || updatedAt == 0 || updatedAt > timestamp) revert BadProof();`
@@ -234,19 +236,19 @@ A security review of the immutable [`StockFair.sol`](file:///home/timidan/Deskto
 
 | Category | Finding / Analysis | Status | Primary Reference |
 |---|---|---|---|
-| **Phase Changes** | `roundId + 1` across aggregator upgrades reverts, causing silent acceptance of obsolete rounds and forced voiding | **Vulnerable (High)** | [`StockFair.sol:241-245`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L241-L245) |
-| **Sponsor Abuse** | Third-party funding via `fund()` is transferred to `r.sponsor` upon refund | **Vulnerable (High)** | [`StockFair.sol:180-192`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L180-L192) |
-| **Token `oraclePaused()`** | Evaluated at settlement block rather than boundary; timing attacks allow deliberate voids | **Vulnerable (Medium)** | [`StockFair.sol:141`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L141) |
-| **External Call Safety** | Unprotected `oraclePaused()` call bubbles up token reverts | **Vulnerable (Medium)** | [`StockFair.sol:141`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L141) |
-| **Asset Validation** | Duplicate assets permitted in `createRound()` | **Vulnerable (Low)** | [`StockFair.sol:92-104`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L92-L104) |
-| **Zero Pot Honey-pot** | `pot == 0` allowed, burning voter WIF with no reward | **Vulnerable (Low)** | [`StockFair.sol:79-107`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L79-L107) |
-| **Negative Price Handling** | `answer <= 0` reverts `settle()`, freezing round for 7 days | **Vulnerable (Low)** | [`StockFair.sol:240`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L240) |
-| **Claim/Refund Double-Spend** | Mutually exclusive states and check-before-transfer prevent double-spend | **Safe** | [`StockFair.sol:175`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L175), [`StockFair.sol:189`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L189) |
-| **Reentrancy** | All external state-changing functions use `nonReentrant` modifier | **Safe** | [`StockFair.sol:72-77`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L72-L77) |
-| **Ties & Zero-Vote Winners** | Correctly pools weights and totals across `winnerMask`; allows refund when total is 0 | **Safe** | [`StockFair.sol:228-236`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L228-L236) |
-| **Rounding & Dust** | Integer division truncates down; dust stays in contract; strictly solvent | **Safe** | [`StockFair.sol:220`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L220) |
-| **Integer Overflows** | Cancun EVM / 0.8.24 checked arithmetic; `gain` operates in `int256` | **Safe** | [`StockFair.sol:144`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L144) |
-| **Events** | All 7 events specified in SPEC are emitted with correct indexed topics | **Safe** | [`StockFair.sol:56-64`](file:///home/timidan/Desktop/stock-fair/contracts/src/StockFair.sol#L56-L64) |
+| **Phase Changes** | `roundId + 1` across aggregator upgrades reverts, causing silent acceptance of obsolete rounds and forced voiding | **Vulnerable (High)** | [`StockFair.sol:241-245`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L241-L245) |
+| **Sponsor Abuse** | Third-party funding via `fund()` is transferred to `r.sponsor` upon refund | **Vulnerable (High)** | [`StockFair.sol:180-192`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L180-L192) |
+| **Token `oraclePaused()`** | Evaluated at settlement block rather than boundary; timing attacks allow deliberate voids | **Vulnerable (Medium)** | [`StockFair.sol:141`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L141) |
+| **External Call Safety** | Unprotected `oraclePaused()` call bubbles up token reverts | **Vulnerable (Medium)** | [`StockFair.sol:141`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L141) |
+| **Asset Validation** | Duplicate assets permitted in `createRound()` | **Vulnerable (Low)** | [`StockFair.sol:92-104`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L92-L104) |
+| **Zero Pot Honey-pot** | `pot == 0` allowed, burning voter WIF with no reward | **Vulnerable (Low)** | [`StockFair.sol:79-107`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L79-L107) |
+| **Negative Price Handling** | `answer <= 0` reverts `settle()`, freezing round for 7 days | **Vulnerable (Low)** | [`StockFair.sol:240`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L240) |
+| **Claim/Refund Double-Spend** | Mutually exclusive states and check-before-transfer prevent double-spend | **Safe** | [`StockFair.sol:175`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L175), [`StockFair.sol:189`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L189) |
+| **Reentrancy** | All external state-changing functions use `nonReentrant` modifier | **Safe** | [`StockFair.sol:72-77`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L72-L77) |
+| **Ties & Zero-Vote Winners** | Correctly pools weights and totals across `winnerMask`; allows refund when total is 0 | **Safe** | [`StockFair.sol:228-236`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L228-L236) |
+| **Rounding & Dust** | Integer division truncates down; dust stays in contract; strictly solvent | **Safe** | [`StockFair.sol:220`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L220) |
+| **Integer Overflows** | Cancun EVM / 0.8.24 checked arithmetic; `gain` operates in `int256` | **Safe** | [`StockFair.sol:144`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L144) |
+| **Events** | All 7 events specified in SPEC are emitted with correct indexed topics | **Safe** | [`StockFair.sol:56-64`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/contracts/src/StockFair.sol#L56-L64) |
 
 ---
 
@@ -280,7 +282,7 @@ A security review of the immutable [`StockFair.sol`](file:///home/timidan/Deskto
 - Payout to voter $i$ is $\lfloor \frac{\text{pot} \times w_i}{T} \rfloor$.
 - By properties of integer division:
   $$\sum_{i=1}^M \lfloor \frac{\text{pot} \times w_i}{T} \rfloor \le \text{pot}$$
-- The contract never pays out more USDG than was transferred in. Leftover dust ($\le M-1$ micro-USDG) remains unclaimable in the contract, exactly as permitted by [`SPEC.md:47`](file:///home/timidan/Desktop/stock-fair/SPEC.md#L47).
+- The contract never pays out more USDG than was transferred in. Leftover dust ($\le M-1$ micro-USDG) remains unclaimable in the contract, exactly as permitted by [`SPEC.md:47`](https://github.com/Timidan/stock-fair/blob/4cea97c56496b7438e487596265a59c3add1ad70/SPEC.md#L47).
 
 #### 5. Return Calculation and Negative Returns
 - `int256 gain = end * 1e18 / start - 1e18;` (line 144).
@@ -307,4 +309,4 @@ A security review of the immutable [`StockFair.sol`](file:///home/timidan/Deskto
 
 
 ## Lead triage (26 Oct)
-Accepted and sent to Astra: 1 (phase-aware successor), 2 (remove fund), 3 (pause reverts instead of voiding), 5 (no duplicate assets), 6 (no zero pot). Declined: 4 (covered by 3 plus the 7-day voidExpired backstop) and 7 (stock prices cannot be zero or below).
+Accepted and fixed: 1 (phase-aware successor), 2 (remove fund), 3 (pause reverts instead of voiding), 5 (no duplicate assets), 6 (no zero pot). Declined: 4 (covered by 3 plus the 7-day voidExpired backstop) and 7 (stock prices cannot be zero or below).

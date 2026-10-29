@@ -55,7 +55,7 @@ Burns never refill the pot; only sponsors do. If nobody sponsors, rounds stop. `
 - `ui/`: the page (Vite, React, viem). The fire is a halftone simulation driven by the real $WIF burned.
 - `keeper/`: opens and settles the weekday rounds (`node keeper/keeper.mjs`, run every 10 minutes)
 - `demo/`: a full round on a local fork, replaying real Chainlink prices (`bash demo/round.sh`)
-- `docs/security-review-agy.md`: an independent security review, with what was fixed and why
+- `docs/security-review.md`: a security review of the first version, with what was fixed and why
 
 ## Run it locally
 

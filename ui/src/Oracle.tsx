@@ -37,7 +37,7 @@ export function Oracle({ reading, txUrl }: { reading: Reading | null; txUrl: (h:
       <ol className="steps reveal">
         <li style={{ "--i": 0 } as React.CSSProperties}><span><b>Pick</b> a stock before the round locks.</span></li>
         <li style={{ "--i": 1 } as React.CSSProperties}><span><b>Burn</b> $WIF on it. Every $WIF is one vote, sent to the dead address.</span></li>
-        <li style={{ "--i": 2 } as React.CSSProperties}><span><b>Split</b> the USDG pot with everyone who burned on the top stock, in proportion to their burn.</span></li>
+        <li style={{ "--i": 2 } as React.CSSProperties}><span><b>Split</b> 80% of the USDG pot with everyone who burned on the top stock, in proportion to their burn. The other 20% rolls into the next pot, and all of it rolls if nobody backed the winner.</span></li>
       </ol>
     </section>
   );

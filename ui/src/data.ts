@@ -44,11 +44,13 @@ export type Round = {
   state: (typeof STATES)[number];
   winnerMask: number;
   totals: bigint[];
+  carriedIn: bigint;
+  payoutBase: bigint;
 };
 
 type RawRound = {
   lockAt: bigint; endAt: bigint; pot: bigint; sponsor: string; state: number;
-  startPrices: readonly bigint[]; endPrices: readonly bigint[]; winnerMask: bigint;
+  startPrices: readonly bigint[]; endPrices: readonly bigint[]; winnerMask: bigint; carriedIn: bigint; payoutBase: bigint;
 };
 
 export type Past = { id: bigint; winnerMask: number; pot: bigint; burned: bigint; state: (typeof STATES)[number] };
@@ -57,6 +59,7 @@ export type Fair = {
   round: Round | null | undefined;
   past: Past[];
   offline: boolean;
+  carry: bigint;
   prices: (Price | null)[];
   startPrices: (number | null)[];
   reading: Reading | null;
@@ -65,14 +68,14 @@ export type Fair = {
 
 // One poller for everything on the page: prices, the latest round, new burns and the settlement.
 export function useFair(refresh: number): Fair {
-  const [fair, setFair] = useState<Fair>({ round: undefined, past: [], offline: false, prices: ASSETS.map(() => null), startPrices: ASSETS.map(() => null), reading: null, flares: ASSETS.map(() => 0) });
+  const [fair, setFair] = useState<Fair>({ round: undefined, past: [], offline: false, carry: 0n, prices: ASSETS.map(() => null), startPrices: ASSETS.map(() => null), reading: null, flares: ASSETS.map(() => 0) });
   const seen = useRef<{ block: bigint | null; round: bigint | null }>({ block: null, round: null });
 
   useEffect(() => {
     let alive = true;
     const load = async () => {
       const prices = await Promise.all(ASSETS.map((a) => latest(a.feed)));
-      let round: Round | null = null, reading: Reading | null = null, past: Past[] = [], startPrices: (number | null)[] = ASSETS.map(() => null);
+      let round: Round | null = null, reading: Reading | null = null, past: Past[] = [], carry = 0n, startPrices: (number | null)[] = ASSETS.map(() => null);
       const bumps = ASSETS.map(() => 0);
       if (STOCK_FAIR) {
         const address = STOCK_FAIR;
@@ -86,7 +89,9 @@ export function useFair(refresh: number): Fair {
           round = {
             id, sponsor: raw.sponsor, lockAt: Number(raw.lockAt), endAt: Number(raw.endAt), pot: raw.pot,
             state: STATES[raw.state], winnerMask: Number(raw.winnerMask), totals: [...totals],
+            carriedIn: raw.carriedIn, payoutBase: raw.payoutBase,
           };
+          carry = (await client.readContract({ address, abi: stockFairAbi, functionName: "carry" })) as bigint;
           const now = Math.floor(Date.now() / 1000);
           if (now >= round.lockAt && round.state !== "Settled") startPrices = await Promise.all(ASSETS.map((a) => roundAt(a.feed, round!.lockAt).then((r) => r?.price ?? null)));
           const head = await client.getBlockNumber();
@@ -118,7 +123,7 @@ export function useFair(refresh: number): Fair {
           );
         }
       }
-      if (alive) setFair((f) => ({ round, past, offline: prices.every((p) => p == null), prices, startPrices, reading, flares: f.flares.map((n, i) => n + bumps[i]) }));
+      if (alive) setFair((f) => ({ round, past, carry, offline: prices.every((p) => p == null), prices, startPrices, reading, flares: f.flares.map((n, i) => n + bumps[i]) }));
     };
     const run = () => load().catch(() => alive && setFair((f) => ({ ...f, offline: true })));
     run();

@@ -9,7 +9,6 @@ import {FindRound} from "../script/FindRound.s.sol";
 import {ReplayFeed} from "./mocks/ReplayFeed.sol";
 
 contract StockFairTest is Test {
-    uint256 constant FORK_BLOCK = 98_540_840; // 2026-10-26 16:07:36 UTC
     uint256 constant LOCK = 1_792_764_000; // Friday 2026-10-23 14:00 UTC
     uint256 constant END = 1_792_785_600; // Friday 2026-10-23 20:00 UTC
     StockFair fair;
@@ -20,7 +19,7 @@ contract StockFairTest is Test {
     address bob = address(0xB0B);
 
     function setUp() public {
-        vm.createSelectFork("robinhood", FORK_BLOCK);
+        vm.createSelectFork("robinhood");
         StockFair.Asset[] memory configured = Assets.all();
         fair = new StockFair(configured);
         FindRound finder = new FindRound();
@@ -34,7 +33,7 @@ contract StockFairTest is Test {
         vm.warp(LOCK - 1 hours);
     }
 
-    function testFullRound() public {
+    function testFullRoundRollsOver() public {
         assertEq(abi.encode(fair.allowedAssets()), abi.encode(assets));
         uint256 id = fair.createRound(assets, LOCK, END, 120e6);
         IERC20 wif = fair.WIF();
@@ -61,23 +60,65 @@ contract StockFairTest is Test {
         vm.warp(LOCK);
         assertEq(uint256(fair.rounds(id).state), uint256(StockFair.State.Locked));
         vm.warp(END + 1);
+        vm.expectEmit(true, false, false, true);
+        emit StockFair.RolledOver(id, 24e6);
         fair.settle(id, starts, ends);
         StockFair.Round memory r = fair.rounds(id);
         assertEq(uint256(r.state), uint256(StockFair.State.Settled));
         assertLt(r.endPrices[0], r.startPrices[0]); // AAPL fell during this historical window.
         assertEq(r.winnerMask, 4); // TSLA alone gained; AAPL, NVDA and SPY fell.
-        assertEq(fair.claimable(id, alice), 90e6);
-        assertEq(fair.claimable(id, bob), 30e6);
+        assertEq(r.carriedIn, 0);
+        assertEq(r.payoutBase, 96e6);
+        assertEq(fair.carry(), 24e6);
+        deal(address(fair.USDG()), address(this), 10e6);
+        fair.USDG().approve(address(fair), 10e6);
+        uint256 next = fair.createRound(assets, END + 1 hours, END + 2 hours, 10e6);
+        assertEq(fair.rounds(next).pot, 34e6);
+        assertEq(fair.rounds(next).carriedIn, 24e6);
+        assertEq(fair.carry(), 0);
+        assertEq(fair.claimable(id, alice), 72e6);
+        assertEq(fair.claimable(id, bob), 24e6);
         uint256 beforeClaims = fair.USDG().balanceOf(alice) + fair.USDG().balanceOf(bob);
         vm.prank(alice);
         fair.claim(id);
         vm.prank(bob);
         fair.claim(id);
-        assertEq(fair.USDG().balanceOf(alice) + fair.USDG().balanceOf(bob) - beforeClaims, r.pot);
-        assertEq(fair.USDG().balanceOf(address(fair)), 0);
+        assertEq(fair.USDG().balanceOf(alice) + fair.USDG().balanceOf(bob) - beforeClaims, 96e6);
+        assertEq(fair.USDG().balanceOf(address(fair)), 34e6);
         vm.prank(alice);
         vm.expectRevert(StockFair.NothingToClaim.selector);
         fair.claim(id);
+    }
+
+    function testUnbackedWinnerRollsOver() public {
+        uint256 id = fair.createRound(assets, LOCK, END, 100e6);
+        deal(address(fair.WIF()), address(this), 1e18);
+        fair.WIF().approve(address(fair), 1e18);
+        fair.vote(id, 0, 1e18); // AAPL loses to TSLA.
+        vm.warp(END + 1);
+        vm.expectEmit(true, false, false, true);
+        emit StockFair.RolledOver(id, 100e6);
+        fair.settle(id, starts, ends);
+        assertEq(fair.rounds(id).winnerMask, 4);
+        assertEq(fair.rounds(id).payoutBase, 0);
+        assertEq(fair.claimable(id, address(this)), 0);
+        assertEq(fair.carry(), 100e6);
+        vm.expectRevert(StockFair.NotRefundable.selector);
+        fair.refund(id);
+        vm.expectRevert(StockFair.InvalidRound.selector);
+        fair.createRound(assets, END + 1 hours, END + 2 hours, 0);
+        uint256 next = fair.createRound(assets, END + 1 hours, END + 2 hours, 20e6);
+        assertEq(fair.rounds(next).pot, 120e6);
+        assertEq(fair.rounds(next).carriedIn, 100e6);
+        assertEq(fair.carry(), 0);
+        vm.warp(END + 2 hours + fair.SETTLE_WINDOW() + 1);
+        fair.voidExpired(next);
+        vm.expectEmit(true, false, false, true);
+        emit StockFair.RolledOver(next, 100e6);
+        fair.refund(next);
+        assertEq(fair.carry(), 100e6);
+        assertEq(fair.USDG().balanceOf(address(this)), 20e6);
+        assertEq(fair.USDG().balanceOf(address(fair)), 100e6);
     }
 
     function testVoidAndRefund() public {

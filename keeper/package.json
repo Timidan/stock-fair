@@ -1,0 +1,7 @@
+{
+  "name": "stock-fair-keeper",
+  "private": true,
+  "type": "module",
+  "scripts": { "run": "node keeper.mjs" },
+  "dependencies": { "viem": "2.21.54" }
+}

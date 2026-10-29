@@ -24,10 +24,10 @@ type Position = { wif: bigint; burns: bigint[]; claimable: bigint };
 
 export default function App() {
   const [refresh, setRefresh] = useState(0);
-  const { round, past, offline, prices, startPrices, reading, flares } = useFair(refresh);
+  const { round, past, offline, carry, prices, startPrices, reading, flares } = useFair(refresh);
   const now = useNow();
   const [selected, setSelected] = useState<number | null>(null);
-  const [amount, setAmount] = useState("100000");
+  const [amount, setAmount] = useState("100");
   const [account, setAccount] = useState<Address | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
   const [busy, setBusy] = useState(false);
@@ -120,13 +120,15 @@ export default function App() {
       return { text: `Claimed ${fmt(owed, 6, 2)} USDG.`, tx: hash };
     });
 
+  // The keeper opens each weekday's round on its first run after 00:00 UTC.
+  const nextOpen = (t: number) => { let d = Math.floor(t / 86400) + 1; while ([0, 6].includes(new Date(d * 86400000).getUTCDay())) d++; return d * 86400; };
+
   const clock =
     round === undefined ? "Loading…"
     : !round ? "First round opens soon"
     : open ? `Picks close in ${countdown(round.lockAt - now)}`
-    : round.state === "Open" || round.state === "Locked" ? (now < round.endAt ? `Settles in ${countdown(round.endAt - now)}` : "Ready to settle")
-    : round.state === "Settled" ? `Round ${round.id} settled`
-    : `Round ${round.id} void: pot returned to sponsor`;
+    : round.state === "Open" || round.state === "Locked" ? (now < round.endAt ? `Picks locked · settles in ${countdown(round.endAt - now)}` : "Ready to settle")
+    : `Round ${round.id} ${round.state === "Settled" ? "settled" : "void"} · next opens in ${countdown(nextOpen(now) - now)}`;
 
   const myBurns = position?.burns.map((b, i) => (b > 0n ? `${fmt(b, 18)} on ${ASSETS[i].symbol}` : null)).filter(Boolean);
 
@@ -149,7 +151,9 @@ export default function App() {
 
       <h1>Burn $WIF on the stock you think climbs most.</h1>
       <p className="lede">
-        {round ? <>Call it right and split the <b>{fmt(round.pot, 6)} USDG</b> pot.</> : "Call it right and split the pot."}
+        {!round ? "Call it right and split the pot."
+          : round.state === "Settled" ? <>Winners split <b>{fmt(round.payoutBase, 6, 2)} USDG</b>.{carry > 0n && <> <b>{fmt(carry, 6, 2)} USDG</b> carries into the next round.</>}</>
+          : <>Call it right and split <b>{fmt((round.pot * 8n) / 10n, 6, 2)} USDG</b>.{round.carriedIn > 0n && <> Includes {fmt((round.carriedIn * 8n) / 10n, 6, 2)} carried from earlier rounds.</>}</>}
       </p>
 
       <Altars

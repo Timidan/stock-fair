@@ -2,7 +2,7 @@
 
 This is the shared contract between `contracts/` (owned by Astra) and `ui/` (owned by Claude). Change it only by agreement.
 
-**One line:** $WIF holders burn $WIF to pick the stock token that will gain most over a round. Voters on the winner split a USDG pot that was funded before voting opened.
+**One line:** $WIF holders burn $WIF to pick the stock token that will gain most over a round. Voters on the winner split 80% of a USDG pot funded before voting opened; 20% rolls into the next round.
 
 ## Chain and addresses (Robinhood Chain mainnet, id 4663)
 | Name | Address | Decimals |
@@ -27,6 +27,7 @@ This is the shared contract between `contracts/` (owned by Astra) and `ui/` (own
 ## Round lifecycle
 1. `createRound(assets[], lockAt, endAt, pot)`
    - Anyone can call it. The caller is the round's **sponsor** and transfers `pot > 0` USDG in.
+   - The stored round pot is this sponsor deposit plus the whole current `carry`. The round stores that carry as `carriedIn`, then resets `carry` to zero. A positive sponsor deposit is required even when carry is available.
    - Takes 2–4 distinct asset tokens, each matching a constructor-configured allowed `(token, feed)` pair exposed by `allowedAssets()`. Requires `now < lockAt < endAt`.
 2. `vote(roundId, assetIndex, wifAmount)`
    - Only before `lockAt`.
@@ -40,16 +41,21 @@ This is the shared contract between `contracts/` (owned by Astra) and `ui/` (own
      - either the next round's `updatedAt > t`, or, when `getRoundData(r+1)` reverts or returns `updatedAt == 0`, `r` equals the feed's current `latestRoundData()` round id
      - `t - updatedAt(r) <= MAX_STALE` (a constant, e.g. 3 days)
    - Return = `end / start - 1`, in fixed point. The winner set is the asset(s) with the highest return. Ties share.
+   - If total weight on the winning assets is positive, `rolled = pot × ROLLOVER_BPS / 10000` goes into `carry`, with `ROLLOVER_BPS = 2000` (20%). The round stores `payoutBase = pot - rolled` for claims. Integer division rounds down.
+   - If nobody backed a winning asset, the whole pot goes into `carry`, `payoutBase` is zero, and the sponsor cannot refund it. Both cases emit `RolledOver(roundId, rolled)`.
    - Reverts with `OraclePaused()` if any asset token's `oraclePaused()` is true at settle time, allowing retries; **void** if any proof fails the staleness bound or if nobody settles within `SETTLE_WINDOW` (e.g. 7 days) after `endAt` (`voidExpired` is callable by anyone).
 4. `claim(roundId)`
-   - Payout = `pot × (voter's weight on winning assets) / (total weight on winning assets)`.
+   - Payout = `payoutBase × (voter's weight on winning assets) / (total weight on winning assets)`.
    - One claim per voter. Leftover dust stays in the contract.
-5. **Refunds:** if a round is void, or nobody voted for a winning asset, the sponsor calls `refund(roundId)` and gets the pot back. **Burned WIF is never returned.** The UI must say this before every vote.
+5. **Refunds:** only if a round is void (stale proof or `voidExpired`), the sponsor calls `refund(roundId)` and receives only their deposit (`pot - carriedIn`); `carriedIn` returns to `carry`, emitting `RolledOver(roundId, carriedIn)` if nonzero. **Burned WIF is never returned.** The UI must say this before every vote.
+
+Carry left after the last round stays in the contract until someone opens another round.
 
 ## Views the UI needs
-- `rounds(id)`: assets, lockAt, endAt, pot, sponsor, state (Open / Locked / Settled / Void), and the start/end prices and winners once settled.
+- `rounds(id)`: assets, lockAt, endAt, pot, sponsor, state (Open / Locked / Settled / Void), startPrices, endPrices, winnerMask, refunded, carriedIn, payoutBase. The sponsor deposit is `pot - carriedIn`; `payoutBase` is set at settlement.
+- `carry()`: USDG waiting for the next round; `ROLLOVER_BPS()`: 2000 (20%).
 - `assetTotals(id)` and `userWeights(id, user)`, plus `claimable(id, user)`.
-- Events: `RoundCreated`, `Voted(roundId, voter, assetIndex, amount)`, `Settled(roundId, startPrices, endPrices, winnerMask)`, `Voided`, `Claimed`, `Refunded`. The UI builds its leaderboard and history from these, so there's no backend.
+- Events: `RoundCreated` (pot includes carry), `Voted(roundId, voter, assetIndex, amount)`, `Settled(roundId, startPrices, endPrices, winnerMask)`, `RolledOver(roundId, amount)`, `Voided`, `Claimed`, `Refunded`. The UI builds its leaderboard and history from these, so there's no backend.
 
 ## Out of scope for v1
 - Fee or USDG→WIF buyback. Add it once there's a route with real depth; the WIF/USDG pool has about $129 of USDG.
@@ -58,7 +64,8 @@ This is the shared contract between `contracts/` (owned by Astra) and `ui/` (own
 
 ## Acceptance
 - Fork tests against mainnet (anvil `--fork-url https://rpc.mainnet.chain.robinhood.com`) cover:
-  - a full round: create → votes (WIF actually lands at the burn address) → warp → settle with real round ids → claims add up to the pot
-  - a void round, followed by a refund
+  - a full round: create → votes (WIF actually lands at the burn address) → warp → settle with real round ids → claims add up to 80% of the pot, with 20% carried into the next round
+  - a round with no weight on the winner carries its whole pot into the next round and cannot be refunded
+  - a void round, followed by a refund of the full pot including any carriedIn
   - a bad round-id proof, which must revert
 - A deploy script verifies the contract on the explorer. Mainnet deploy happens only after the user funds the deployer.

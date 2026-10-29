@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # One full Stock Fair round on a local anvil fork of Robinhood Chain mainnet, in real time (~6 min).
 # Prices are REAL Chainlink rounds from the last 36h (demo/history.json), replayed through ReplayFeed
-# etched over the feed proxies on the fork only. Usage: anvil fork on :8545, then `bash demo/round.sh`.
+# etched over the feed proxies on the fork only. Usage: anvil fork on :8545, then `bash demo/round.sh`;
+# run `REUSE=1 bash demo/round.sh` afterwards for another round on the same deployment (shows the rollover).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 L=http://127.0.0.1:8545
@@ -22,6 +23,7 @@ hist() { python3 -c "import json,sys;h=json.load(open('demo/history.json'))['$1'
 nhist() { python3 -c "import json;print(len(json.load(open('demo/history.json'))['$1']))"; }
 now() { cast block latest -f timestamp --rpc-url $L; }
 
+if [ -z "${REUSE:-}" ]; then
 say "1/7 etch replay feeds over the 4 Chainlink proxies (fork only) and post each stock's opening price"
 (cd contracts && forge build >/dev/null 2>&1)
 CODE=$(cd contracts && forge inspect ReplayFeed deployedBytecode 2>/dev/null)
@@ -37,6 +39,7 @@ ALLOW="[(${TOKENS[0]},${FEEDS[0]}),(${TOKENS[1]},${FEEDS[1]}),(${TOKENS[2]},${FE
 FAIR=$(cd contracts && forge create src/StockFair.sol:StockFair 2>/dev/null --rpc-url $L --private-key $K0 --broadcast --constructor-args "$ALLOW" | awk '/Deployed to/{print $3}')
 echo "$FAIR" > demo/.address
 say "   StockFair at $FAIR"
+  say "   watch it: http://localhost:5173/?rpc=$L&fair=$FAIR&poll=3000"
 
 say "3/7 fund the sponsor with USDG and four voters with WIF (impersonating mainnet holders on the fork)"
 for H in $PM $USDG_POOL; do cast rpc --rpc-url $L anvil_impersonateAccount $H >/dev/null; cast rpc --rpc-url $L anvil_setBalance $H 0x56BC75E2D63100000 >/dev/null; done
@@ -47,15 +50,25 @@ for k in "${K[@]}"; do
   send --private-key $k $WIF 'approve(address,uint256)' $FAIR $(cast max-uint)
 done
 
-say "4/7 sponsor opens round 1: 100 USDG pot, picks close in 150s, settles 300s later"
+else
+  FAIR=$(cat demo/.address)
+  say "reusing StockFair at $FAIR (carry: $(cast call $FAIR 'carry()(uint256)' --rpc-url $L | cut -d' ' -f1) micro-USDG)"
+  send --unlocked --from $USDG_POOL $USDG 'transfer(address,uint256)' $SPONSOR 100000000
+fi
+
+say "4/7 sponsor opens a round with 100 USDG (plus any carry), picks close in 150s, settles 300s later"
 T=$(now); LOCK=$((T + 150)); END=$((LOCK + 300))
 send --private-key $K0 $USDG 'approve(address,uint256)' $FAIR 100000000
 ASSETS="[(${TOKENS[0]},${FEEDS[0]}),(${TOKENS[1]},${FEEDS[1]}),(${TOKENS[2]},${FEEDS[2]}),(${TOKENS[3]},${FEEDS[3]})]"
 send --private-key $K0 $FAIR 'createRound((address,address)[],uint256,uint256,uint256)' "$ASSETS" $LOCK $END 100000000
+ID=$(cast call $FAIR 'roundCount()(uint256)' --rpc-url $L | cut -d' ' -f1)
+say "   round $ID is open"
 
 say "5/7 voters burn WIF (watch the fires)"
-vote() { send --private-key ${K[$1]} $FAIR 'vote(uint256,uint256,uint256)' 1 $2 ${3}000000000000000000; say "   voter $(( $1 + 1 )) burned ${3} WIF on ${SYMS[$2]}"; sleep 12; }
+vote() { send --private-key ${K[$1]} $FAIR 'vote(uint256,uint256,uint256)' $ID $2 ${3}000000000000000000; say "   voter $(( $1 + 1 )) burned ${3} WIF on ${SYMS[$2]}"; sleep 12; }
 vote 0 0 600000; vote 1 2 1500000; vote 2 1 400000; vote 3 3 250000; vote 1 2 900000; vote 0 0 300000; vote 2 0 200000
+latest_ids() { local out="["; for i in 0 1 2 3; do out+="$(cast call ${FEEDS[$i]} 'latestRoundData()(uint80,int256,uint256,uint256,uint80)' --rpc-url $L | head -1 | cut -d' ' -f1),"; done; echo "${out%,}]"; }
+S=$(latest_ids)  # the rounds current at the lock: nothing new is pushed until after it
 while [ "$(now)" -lt "$LOCK" ]; do sleep 3; cast rpc --rpc-url $L evm_mine >/dev/null; done
 
 say "6/7 picks locked; replaying the real 36h of Chainlink rounds into the window"
@@ -68,16 +81,12 @@ done
 while [ "$(now)" -le "$END" ]; do sleep 3; cast rpc --rpc-url $L evm_mine >/dev/null; done
 
 say "7/7 settle with Chainlink round proofs, then winners claim"
-S="["; E="["
-for i in 0 1 2 3; do
-  S+="18446744073709551617,"  # (1<<64)+1: the opening round each replay feed got first
-  E+="$(cast call ${FEEDS[$i]} 'latestRoundData()(uint80,int256,uint256,uint256,uint80)' --rpc-url $L | head -1 | cut -d' ' -f1),"
-done
-S="${S%,}]"; E="${E%,}]"
-send --private-key $K0 $FAIR 'settle(uint256,uint80[],uint80[])' 1 "$S" "$E"
+E=$(latest_ids)
+send --private-key $K0 $FAIR 'settle(uint256,uint80[],uint80[])' $ID "$S" "$E"
 for k in "${K[@]}"; do
   A=$(cast wallet address $k)
-  OWED=$(cast call $FAIR 'claimable(uint256,address)(uint256)' 1 $A --rpc-url $L | cut -d' ' -f1)
-  [ "$OWED" != "0" ] && send --private-key $k $FAIR 'claim(uint256)' 1 && say "   $A claimed $(python3 -c "print($OWED/1e6)") USDG"
+  OWED=$(cast call $FAIR 'claimable(uint256,address)(uint256)' $ID $A --rpc-url $L | cut -d' ' -f1)
+  [ "$OWED" != "0" ] && send --private-key $k $FAIR 'claim(uint256)' $ID && say "   $A claimed $(python3 -c "print($OWED/1e6)") USDG"
 done
+say "carry for the next round: $(cast call $FAIR 'carry()(uint256)' --rpc-url $L | cut -d' ' -f1) micro-USDG"
 say "done. burned WIF now at 0x...dEaD: $(cast call $WIF 'balanceOf(address)(uint256)' 0x000000000000000000000000000000000000dEaD --rpc-url $L | cut -d' ' -f2)"

@@ -9,6 +9,7 @@ contract StockFair {
     address public constant BURN = 0x000000000000000000000000000000000000dEaD;
     uint256 public constant MAX_STALE = 3 days;
     uint256 public constant SETTLE_WINDOW = 7 days;
+    uint256 public constant ROLLOVER_BPS = 2000;
 
     enum State {
         Open,
@@ -33,9 +34,12 @@ contract StockFair {
         int256[] endPrices;
         uint256 winnerMask;
         bool refunded;
+        uint256 carriedIn;
+        uint256 payoutBase;
     }
 
     uint256 public roundCount;
+    uint256 public carry;
     Asset[] private _allowedAssets;
     mapping(uint256 => Round) private _rounds;
     mapping(uint256 => uint256[]) private _totals;
@@ -62,6 +66,7 @@ contract StockFair {
     event Voided(uint256 indexed roundId);
     event Claimed(uint256 indexed roundId, address indexed voter, uint256 amount);
     event Refunded(uint256 indexed roundId, address indexed sponsor, uint256 amount);
+    event RolledOver(uint256 indexed roundId, uint256 amount);
 
     constructor(Asset[] memory assets) {
         for (uint256 i; i < assets.length; ++i) {
@@ -88,7 +93,9 @@ contract StockFair {
         Round storage r = _rounds[id];
         r.lockAt = lockAt;
         r.endAt = endAt;
-        r.pot = pot;
+        r.carriedIn = carry;
+        r.pot = pot + carry;
+        carry = 0;
         r.sponsor = msg.sender;
         for (uint256 i; i < assets.length; ++i) {
             if (assets[i].token.code.length == 0 || assets[i].feed.code.length == 0) revert InvalidAssets();
@@ -107,7 +114,7 @@ contract StockFair {
             _totals[id].push(0);
         }
         if (!USDG.transferFrom(msg.sender, address(this), pot)) revert TransferFailed();
-        emit RoundCreated(id, msg.sender, assets, lockAt, endAt, pot);
+        emit RoundCreated(id, msg.sender, assets, lockAt, endAt, r.pot);
     }
 
     function vote(uint256 id, uint256 assetIndex, uint256 wifAmount) external nonReentrant {
@@ -155,6 +162,11 @@ contract StockFair {
         r.startPrices = starts;
         r.endPrices = ends;
         r.winnerMask = mask;
+        (, uint256 total) = _winningWeights(id, address(0));
+        uint256 rolled = total == 0 ? r.pot : r.pot * ROLLOVER_BPS / 10_000;
+        r.payoutBase = r.pot - rolled;
+        carry += rolled;
+        emit RolledOver(id, rolled);
         emit Settled(id, starts, ends, mask);
     }
 
@@ -176,16 +188,15 @@ contract StockFair {
 
     function refund(uint256 id) external nonReentrant {
         Round storage r = _round(id);
-        (, uint256 total) = _winningWeights(id, msg.sender);
-        if (
-            msg.sender != r.sponsor || r.refunded
-                || !(r.state == State.Void || (r.state == State.Settled && total == 0))
-        ) {
+        if (msg.sender != r.sponsor || r.refunded || r.state != State.Void) {
             revert NotRefundable();
         }
         r.refunded = true;
-        if (!USDG.transfer(msg.sender, r.pot)) revert TransferFailed();
-        emit Refunded(id, msg.sender, r.pot);
+        uint256 amount = r.pot - r.carriedIn;
+        carry += r.carriedIn;
+        if (r.carriedIn != 0) emit RolledOver(id, r.carriedIn);
+        if (!USDG.transfer(msg.sender, amount)) revert TransferFailed();
+        emit Refunded(id, msg.sender, amount);
     }
 
     function allowedAssets() public view returns (Asset[] memory) {
@@ -214,7 +225,7 @@ contract StockFair {
         Round storage r = _round(id);
         if (r.state != State.Settled || claimed[id][user] || r.refunded) return 0;
         (uint256 weight, uint256 total) = _winningWeights(id, user);
-        return total == 0 ? 0 : r.pot * weight / total;
+        return total == 0 ? 0 : r.payoutBase * weight / total;
     }
 
     function _round(uint256 id) private view returns (Round storage r) {

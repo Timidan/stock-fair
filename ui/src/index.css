@@ -22,16 +22,23 @@
 body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
 main { max-width: 1080px; margin: 0 auto; padding: 16px 16px 48px; }
 
-header { display: flex; align-items: center; gap: 16px; padding: 8px 0 24px; font-size: 14px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 8px 0 24px; font-size: 14px; }
 .mark { display: inline-flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 22px; font-weight: 700; }
 .mark img { display: block; margin-top: -6px; }
 .by { color: var(--ink-muted); font-size: 13px; }
 .clock { margin-left: auto; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
 .acct { padding: 6px 12px; border: 1px solid var(--ink-faint); border-radius: 999px; font-variant-numeric: tabular-nums; }
+.holdings { display: inline-flex; flex-wrap: wrap; gap: 0 8px; color: var(--ink-muted); font-size: 14px; font-variant-numeric: tabular-nums; }
+.holdings span:first-child { color: var(--ink); font-weight: 600; }
+.holdings span + span::before { content: "·"; margin-right: 8px; }
 
 h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(30px, 5.4vw, 56px); line-height: 1.02; text-align: center; margin: 16px auto 8px; max-width: 16ch; text-wrap: balance; }
-.lede { text-align: center; margin: 0 0 20px; font-size: 18px; color: var(--ink-muted); }
-.lede b { color: var(--gold); font-weight: 600; }
+/* The pot is the prize plaque: gold ring, gilded amount, a lozenge at each end. */
+.lede { display: flex; align-items: center; justify-content: center; gap: 18px; width: fit-content; max-width: 100%; margin: 16px auto 24px; padding: 14px 26px; border-radius: 28px; background: linear-gradient(#ddb95e24, #ddb95e0d), #0d0d0db8; box-shadow: inset 0 0 0 1px #ddb95e73, 0 0 48px #ddb95e24; font: 600 clamp(22px, 3.2vw, 32px)/1.2 var(--serif); text-align: center; text-wrap: balance; }
+.lede::before, .lede::after { content: ""; flex: none; width: 7px; height: 7px; background: var(--gold); transform: rotate(45deg); }
+.lede b { font-size: 1.2em; font-weight: 700; white-space: nowrap; color: transparent; background: linear-gradient(#f8e9b4, var(--gold) 58%, #b48e42); -webkit-background-clip: text; background-clip: text; }
+.lede img { width: 1em; height: 1em; margin-right: 0.22em; vertical-align: -0.14em; }
+.lede small { display: block; margin-top: 2px; font: 400 14px var(--sans); color: var(--ink-muted); }
 
 body::before { content: ""; position: fixed; inset: 0; z-index: -1; background: url(/art/temple.webp) center top / cover no-repeat; opacity: 0.32; mask-image: linear-gradient(#000 40%, transparent); }
 
@@ -56,9 +63,15 @@ body::before { content: ""; position: fixed; inset: 0; z-index: -1; background: 
 .move.up { color: var(--up); }
 .move.down { color: var(--down); }
 .burned { font-size: 13px; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
+.stats { display: grid; gap: 3px; width: min(100%, 176px); margin-top: 10px; padding: 10px 8px 0; border-top: 1px solid var(--ink-faint); font-size: 12px; color: var(--ink-muted); }
+.stats span { display: flex; justify-content: space-between; gap: 8px; }
+.stats b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.stats .up { color: var(--up); }
+.stats .down { color: var(--down); }
 
 .panel { display: grid; grid-template-columns: 1fr auto; gap: 12px 16px; align-items: end; background: var(--panel); border: 1px solid var(--ink-faint); border-radius: 28px; padding: 20px 24px; margin-top: 16px; }
 .panel label { display: grid; gap: 8px; font-size: 14px; color: var(--ink-muted); }
+.amount-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; }
 .panel input { font: 600 22px var(--sans); color: var(--ink); background: transparent; border: 0; border-bottom: 1px solid var(--ink-faint); padding: 6px 0; font-variant-numeric: tabular-nums; min-width: 0; }
 .panel input:focus-visible { outline: none; border-bottom-color: var(--lime); }
 .note { margin: 0; font-size: 15px; color: var(--ink-muted); align-self: center; }
@@ -70,6 +83,16 @@ body::before { content: ""; position: fixed; inset: 0; z-index: -1; background: 
 .pill.ghost { background: none; color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink-faint); padding: 8px 16px; min-height: 36px; font-size: 14px; }
 .pill:disabled { opacity: 0.4; cursor: not-allowed; }
 .pill:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+
+.ways { list-style: none; counter-reset: way; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin: 24px 0 0; padding: 0; }
+.ways li { counter-increment: way; }
+.ways .pill { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 8px 24px 8px 20px; font-size: 15px; text-decoration: none; background: var(--panel); transition: transform 160ms var(--ease), box-shadow var(--dur) var(--ease); }
+.ways .pill::before { content: counter(way, upper-roman); font: 600 24px var(--serif); color: var(--lime); }
+.ways svg { width: 12px; height: 12px; margin-left: auto; color: var(--ink-muted); transition: transform 160ms var(--ease), color var(--dur) var(--ease); }
+@media (hover: hover) and (pointer: fine) {
+  .ways .pill:hover { box-shadow: inset 0 0 0 1px #d4fc5059; }
+  .ways .pill:hover svg { color: var(--lime); transform: translate(2px, -2px); }
+}
 
 .status { margin: 16px 0 0; font-size: 14px; }
 .status.error { color: var(--down); }
@@ -128,12 +151,14 @@ footer { margin-top: 40px; font-size: 13px; color: var(--ink-muted); text-align:
 @media (max-width: 560px) {
   .altars { grid-template-columns: repeat(2, 1fr); row-gap: 24px; }
   .panel { grid-template-columns: 1fr; }
+  .ways { flex-direction: column; }
   .oracle { grid-template-columns: 1fr; gap: 24px; }
   .past li { grid-template-columns: 1fr 1fr; }
   .by { display: none; }
+  header .holdings { order: 1; margin-left: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .altar { transition: none; }
+  .altar, .ways svg { transition: none; }
   body::before { animation: none; }
   .reveal, .steps li { transform: none; transition-property: opacity; }
   .stele.inview tbody tr, .stele.inview tr.won { animation: none; }

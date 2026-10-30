@@ -33,6 +33,39 @@ export async function roundAt(feed: Address, t: number): Promise<{ id: bigint; p
   }
 }
 
+export type Market = { change24h: number | null; volume24h: number; liquidity: number };
+
+type DexPair = { chainId: string; priceChange?: { h24?: number }; volume?: { h24?: number }; liquidity?: { usd?: number } };
+
+// Totals across the token's pools on this chain (DexScreener lists up to 30, deepest first); the 24h move is the deepest pool's.
+async function market(token: Address): Promise<Market | null> {
+  try {
+    const { pairs } = (await (await fetch(`https://api.dexscreener.com/latest/dex/tokens/${token}`)).json()) as { pairs: DexPair[] | null };
+    const pools = (pairs ?? []).filter((p) => p.chainId === "robinhood");
+    if (!pools.length) return null;
+    const deepest = pools.reduce((a, b) => ((b.liquidity?.usd ?? 0) > (a.liquidity?.usd ?? 0) ? b : a));
+    return {
+      change24h: deepest.priceChange?.h24 ?? null,
+      volume24h: pools.reduce((sum, p) => sum + (p.volume?.h24 ?? 0), 0),
+      liquidity: pools.reduce((sum, p) => sum + (p.liquidity?.usd ?? 0), 0),
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Market stats only add detail: if DexScreener fails the altars keep the last figures, or show none, and the fair carries on.
+export function useMarkets() {
+  const [markets, setMarkets] = useState<(Market | null)[]>(() => ASSETS.map(() => null));
+  useEffect(() => {
+    const load = () => Promise.all(ASSETS.map((a) => market(a.token))).then((next) => setMarkets((m) => next.map((n, i) => n ?? m[i])));
+    load();
+    const t = setInterval(load, 60_000);
+    return () => clearInterval(t);
+  }, []);
+  return markets;
+}
+
 export const STATES = ["Open", "Locked", "Settled", "Void"] as const;
 
 export type Round = {

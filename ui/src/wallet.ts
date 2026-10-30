@@ -7,6 +7,16 @@ declare global {
   }
 }
 
+// Follows the account the wallet has open for this site, so switching accounts never leaves another account's balances on the page.
+export function watchAccount(onChange: (account: Address | null) => void) {
+  const { ethereum } = window;
+  if (!ethereum) return;
+  const update = (accounts: readonly Address[]) => onChange(accounts[0] ?? null);
+  ethereum.request({ method: "eth_accounts" }).then(update).catch(() => {});
+  ethereum.on?.("accountsChanged", update);
+  return () => ethereum.removeListener?.("accountsChanged", update);
+}
+
 export async function connect() {
   if (!window.ethereum) throw new Error("No wallet found. Install a browser wallet to vote.");
   const wallet = createWalletClient({ chain: robinhood, transport: custom(window.ethereum) });

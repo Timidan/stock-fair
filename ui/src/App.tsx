@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { BaseError, formatUnits, parseUnits, type Address } from "viem";
-import { ASSETS, STOCK_FAIR, WIF, client, erc20Abi, explorerTx, stockFairAbi } from "./chain";
-import { countdown, roundAt, useFair, useNow } from "./data";
+import { ASSETS, GET_WIF, STOCK_FAIR, USDG, WIF, client, erc20Abi, explorerTx, stockFairAbi } from "./chain";
+import { countdown, roundAt, useFair, useMarkets, useNow } from "./data";
 import { Altars } from "./Altars";
 import { Oracle } from "./Oracle";
 import { emberFlight, revealOnScroll } from "./motion";
-import { connect } from "./wallet";
+import { connect, watchAccount } from "./wallet";
 
 const fmt = (v: bigint, d: number, digits = 0) =>
   Number(formatUnits(v, d)).toLocaleString("en-US", { maximumFractionDigits: digits });
+
+const Usdg = ({ v }: { v: bigint }) => <b><img src="/brand/usdg.png" alt="" />{fmt(v, 6, 2)} USDG</b>;
 
 // Wallet and contract errors, in words a voter can act on.
 const explain = (e: unknown) => {
@@ -20,22 +22,26 @@ const explain = (e: unknown) => {
   return msg.split("\n")[0];
 };
 
-type Position = { wif: bigint; burns: bigint[]; claimable: bigint };
+type Position = { burns: bigint[]; claimable: bigint };
+type Balances = { wif: bigint; usdg: bigint; eth: bigint };
 
 export default function App() {
   const [refresh, setRefresh] = useState(0);
   const { round, past, offline, carry, prices, startPrices, reading, flares } = useFair(refresh);
+  const markets = useMarkets();
   const now = useNow();
   const [selected, setSelected] = useState<number | null>(null);
   const [amount, setAmount] = useState("100");
   const [account, setAccount] = useState<Address | null>(null);
   const [position, setPosition] = useState<Position | null>(null);
+  const [balances, setBalances] = useState<Balances | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ text: string; tx?: string; error?: boolean } | null>(null);
   const [ownFlares, setOwnFlares] = useState(() => ASSETS.map(() => 0));
   const burnButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => revealOnScroll(), []);
+  useEffect(() => watchAccount(setAccount), []);
 
   const totals = round?.totals ?? ASSETS.map(() => 0n);
   const sum = totals.reduce((a, b) => a + b, 0n);
@@ -49,13 +55,28 @@ export default function App() {
     if (!account || !round || !STOCK_FAIR) return setPosition(null);
     const address = STOCK_FAIR;
     Promise.all([
-      client.readContract({ address: WIF, abi: erc20Abi, functionName: "balanceOf", args: [account] }),
       client.readContract({ address, abi: stockFairAbi, functionName: "userWeights", args: [round.id, account] }),
       client.readContract({ address, abi: stockFairAbi, functionName: "claimable", args: [round.id, account] }),
     ])
-      .then(([wif, burns, claimable]) => setPosition({ wif, burns: [...(burns as readonly bigint[])], claimable: claimable as bigint }))
+      .then(([burns, claimable]) => setPosition({ burns: [...(burns as readonly bigint[])], claimable: claimable as bigint }))
       .catch(() => setPosition(null));
   }, [account, round?.id, round?.state, round?.totals.join(), refresh]);
+
+  useEffect(() => {
+    if (!account) return setBalances(null);
+    const load = () =>
+      Promise.all([
+        client.readContract({ address: WIF, abi: erc20Abi, functionName: "balanceOf", args: [account] }),
+        client.readContract({ address: USDG, abi: erc20Abi, functionName: "balanceOf", args: [account] }),
+        client.getBalance({ address: account }),
+      ])
+        .then(([wif, usdg, eth]) => setBalances({ wif, usdg, eth }))
+        .catch(() => setBalances(null));
+    load();
+    // Back from a bridge or a swap in another tab, the wallet holds something new.
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [account, refresh]);
 
   async function run(label: string, fn: (w: Awaited<ReturnType<typeof connect>>) => Promise<{ text: string; tx?: string } | void>) {
     setBusy(true);
@@ -77,10 +98,15 @@ export default function App() {
     run("Check your wallet…", async ({ wallet, account }) => {
       if (selected == null || !round || !STOCK_FAIR) return;
       const wei = parseUnits(amount, 18);
-      const allowance = await client.readContract({ address: WIF, abi: erc20Abi, functionName: "allowance", args: [account, STOCK_FAIR] });
+      const [allowance, balance] = await Promise.all([
+        client.readContract({ address: WIF, abi: erc20Abi, functionName: "allowance", args: [account, STOCK_FAIR] }),
+        client.readContract({ address: WIF, abi: erc20Abi, functionName: "balanceOf", args: [account] }),
+      ]);
+      if (balance < wei) throw new Error("Not enough $WIF in this wallet.");
       if (allowance < wei) {
         setStatus({ text: "Approve $WIF in your wallet…" });
-        const h = await wallet.writeContract({ account, address: WIF, abi: erc20Abi, functionName: "approve", args: [STOCK_FAIR, wei] });
+        // The whole balance, so the next burns need one confirmation. The contract only takes $WIF from the wallet calling vote.
+        const h = await wallet.writeContract({ account, address: WIF, abi: erc20Abi, functionName: "approve", args: [STOCK_FAIR, balance] });
         await client.waitForTransactionReceipt({ hash: h });
       }
       setStatus({ text: `Burning ${Number(amount).toLocaleString()} $WIF on ${ASSETS[selected].symbol}…` });
@@ -131,6 +157,13 @@ export default function App() {
     : `Round ${round.id} ${round.state === "Settled" ? "settled" : "void"} · next opens in ${countdown(nextOpen(now) - now)}`;
 
   const myBurns = position?.burns.map((b, i) => (b > 0n ? `${fmt(b, 18)} on ${ASSETS[i].symbol}` : null)).filter(Boolean);
+  const holdings = balances && (
+    <span className="holdings">
+      <span>{fmt(balances.wif, 18, 2)} $WIF</span>
+      <span>{fmt(balances.usdg, 6, 2)} USDG</span>
+      <span>{fmt(balances.eth, 18, 6)} ETH</span>
+    </span>
+  );
 
   return (
     <main>
@@ -138,6 +171,7 @@ export default function App() {
         <span className="mark"><img src="/brand/mark.svg" alt="" width="32" height="32" />Stock Fair</span>
         <span className="by">a $WIF fair on Robinhood Chain</span>
         <span className="clock">{clock}</span>
+        {holdings}
         {account ? (
           <span className="acct">{account.slice(0, 6)}…{account.slice(-4)}</span>
         ) : (
@@ -151,13 +185,16 @@ export default function App() {
 
       <h1>Burn $WIF on the stock you think climbs most.</h1>
       <p className="lede">
-        {!round ? "Call it right and split the pot."
-          : round.state === "Settled" ? <>Winners split <b>{fmt(round.payoutBase, 6, 2)} USDG</b>.{carry > 0n && <> <b>{fmt(carry, 6, 2)} USDG</b> carries into the next round.</>}</>
-          : <>Call it right and split <b>{fmt((round.pot * 8n) / 10n, 6, 2)} USDG</b>.{round.carriedIn > 0n && <> Includes {fmt((round.carriedIn * 8n) / 10n, 6, 2)} carried from earlier rounds.</>}</>}
+        <span>
+          {!round ? "Call it right and split the pot."
+            : round.state === "Settled" ? <>Winners split <Usdg v={round.payoutBase} />.{carry > 0n && <> <Usdg v={carry} /> carries into the next round.</>}</>
+            : <>Call it right and split <Usdg v={(round.pot * 8n) / 10n} />.{round.carriedIn > 0n && <small>Includes {fmt((round.carriedIn * 8n) / 10n, 6, 2)} carried from earlier rounds.</small>}</>}
+        </span>
       </p>
 
       <Altars
         prices={prices}
+        markets={markets}
         shares={shares}
         burned={totals.map((t) => fmt(t, 18))}
         returns={ASSETS.map((_, i) =>
@@ -173,7 +210,10 @@ export default function App() {
       {open && (
         <section className="panel">
           <label>
-            <span>{selected == null ? "Pick a stock above" : `$WIF to burn on ${ASSETS[selected].symbol}`}</span>
+            <span className="amount-head">
+              <span>{selected == null ? "Pick a stock above" : `$WIF to burn on ${ASSETS[selected].symbol}`}</span>
+              {holdings}
+            </span>
             <input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))} disabled={selected == null} />
           </label>
           <button ref={burnButton} className="pill lime" onClick={vote} disabled={busy || selected == null || !amount}>
@@ -181,7 +221,7 @@ export default function App() {
           </button>
           <p className="warn">
             Burned $WIF is gone for good, win or lose.
-            {position && <> You hold {fmt(position.wif, 18)} $WIF{myBurns?.length ? `, and burned ${myBurns.join(", ")} this round` : ""}.</>}
+            {myBurns?.length ? ` You burned ${myBurns.join(", ")} this round.` : ""}
           </p>
         </section>
       )}
@@ -206,6 +246,17 @@ export default function App() {
         </p>
       )}
 
+      <ol className="ways">
+        {GET_WIF.map((w) => (
+          <li key={w.url}>
+            <a className="pill ghost" href={w.url} target="_blank" rel="noreferrer">
+              {w.label}
+              <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3 9l6-6M4 3h5v5" /></svg>
+            </a>
+          </li>
+        ))}
+      </ol>
+
       <Oracle reading={reading} txUrl={explorerTx} />
 
       {past.length > 0 && (
@@ -224,7 +275,7 @@ export default function App() {
         </section>
       )}
 
-      <footer>Prices: Chainlink on Robinhood Chain. Each round settles on the last price at or before its close.</footer>
+      <footer>Prices: Chainlink on Robinhood Chain. Each round settles on the last price at or before its close. 24h change, volume and liquidity: the tokens' pools on Robinhood Chain, from DexScreener.</footer>
     </main>
   );
 }

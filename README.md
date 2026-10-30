@@ -77,11 +77,11 @@ Burns never refill the pot; only sponsors do. If nobody sponsors, rounds stop.
 Every round the contract has run, with links to each transaction. The table is rebuilt from the contract's events after each round settles, and rows for upcoming rounds show their schedule.
 
 <!-- rounds -->
-**1 round so far · 168 $WIF burned · 0 USDG paid to winners.** Built from the contract's events by `node keeper/proof.mjs`, last run 2026-10-30 20:03 UTC.
+**1 round so far · 168 $WIF burned · 0.64 USDG paid to winners.** Built from the contract's events by `node keeper/proof.mjs`, last run 2026-10-30 20:13 UTC.
 
 | Round | Day | Pot | Opened | $WIF burned | Settled | Winner | Paid out |
 |---|---|---|---|---|---|---|---|
-| 1 | Fri 30 Oct | 0.8 USDG | [00:00 UTC](https://robinhoodchain.blockscout.com/tx/0x06b7163fce4e763a22989cf11b544a8ffb682a8994935f9e4ae95999d2002903) | 168 $WIF · [1](https://robinhoodchain.blockscout.com/tx/0x14385ed3cfba388e5238c2c199a3fca037e1da9b3dae5783a20afe84ae78c370) [2](https://robinhoodchain.blockscout.com/tx/0x3a153db985a480782a612e551a5d5b4bfbef34f97090fee58f5432266a9f4848) [3](https://robinhoodchain.blockscout.com/tx/0x0321518e6e8af4926d88faa66127df6c4502d5b920c042388c82d10ef58af116) [4](https://robinhoodchain.blockscout.com/tx/0x71faa6d4e5d70f99079818491f6306eb0b8c3e2a2ba18add6bff58260c7b7f04) | [settle](https://robinhoodchain.blockscout.com/tx/0x7a8394533b1159a1608f175a3e2e39c28058018f0d9340042480e95a747546f5) | TSLA +1.04% | not claimed yet |
+| 1 | Fri 30 Oct | 0.8 USDG | [00:00 UTC](https://robinhoodchain.blockscout.com/tx/0x06b7163fce4e763a22989cf11b544a8ffb682a8994935f9e4ae95999d2002903) | 168 $WIF · [1](https://robinhoodchain.blockscout.com/tx/0x14385ed3cfba388e5238c2c199a3fca037e1da9b3dae5783a20afe84ae78c370) [2](https://robinhoodchain.blockscout.com/tx/0x3a153db985a480782a612e551a5d5b4bfbef34f97090fee58f5432266a9f4848) [3](https://robinhoodchain.blockscout.com/tx/0x0321518e6e8af4926d88faa66127df6c4502d5b920c042388c82d10ef58af116) [4](https://robinhoodchain.blockscout.com/tx/0x71faa6d4e5d70f99079818491f6306eb0b8c3e2a2ba18add6bff58260c7b7f04) | [settle](https://robinhoodchain.blockscout.com/tx/0x7a8394533b1159a1608f175a3e2e39c28058018f0d9340042480e95a747546f5) | TSLA +1.04% | 0.64 USDG · [1](https://robinhoodchain.blockscout.com/tx/0x056df886426e6740af7abe96e0a5c3b47b82d1f6ca6c22d2d24323a4a8d6c06b) |
 |  | Mon 2 Nov | 0.8 USDG + carry | opens 00:00 UTC | picks close 14:30 UTC | after 21:00 UTC |  |  |
 |  | Tue 3 Nov | 0.8 USDG + carry | opens 00:00 UTC | picks close 14:30 UTC | after 21:00 UTC |  |  |
 |  | Wed 4 Nov | 0.8 USDG + carry | opens 00:00 UTC | picks close 14:30 UTC | after 21:00 UTC |  |  |

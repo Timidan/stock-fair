@@ -11,7 +11,7 @@ export const robinhood = defineChain({
 
 const params = new URLSearchParams(location.search);
 // VITE_RPC (or ?rpc=) points the app at a local fork for demos; production uses the public RPC.
-export const client = createPublicClient({ chain: robinhood, transport: http(import.meta.env.VITE_RPC || params.get("rpc") || undefined) });
+export const client = createPublicClient({ chain: robinhood, transport: http(import.meta.env.VITE_RPC || params.get("rpc") || undefined, { batch: true }) });
 
 export const WIF: Address = "0x5173b8eA6923c2d40267890D45C46a3480954773";
 export const USDG: Address = "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168";

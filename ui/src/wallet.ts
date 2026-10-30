@@ -17,6 +17,13 @@ export function watchAccount(onChange: (account: Address | null) => void) {
   return () => ethereum.removeListener?.("accountsChanged", update);
 }
 
+// Phone browsers have no wallet, so these open this page inside a wallet's own browser, which does.
+export const OPEN_IN = [
+  { name: "MetaMask", url: `https://link.metamask.io/dapp/${location.host}` },
+  { name: "Coinbase Wallet", url: `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(location.origin)}` },
+  { name: "Trust Wallet", url: `https://link.trustwallet.com/open_url?coin_id=60&url=${encodeURIComponent(location.origin)}` },
+];
+
 // Forgets this site in wallets that support it, so a reload doesn't reconnect.
 export const disconnect = () => window.ethereum?.request({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] }).catch(() => {});
 

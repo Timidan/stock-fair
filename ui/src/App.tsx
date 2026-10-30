@@ -5,7 +5,7 @@ import { countdown, roundAt, useFair, useMarkets, useNow } from "./data";
 import { Altars } from "./Altars";
 import { Oracle } from "./Oracle";
 import { emberFlight, revealOnScroll } from "./motion";
-import { connect, disconnect, watchAccount } from "./wallet";
+import { OPEN_IN, connect, disconnect, watchAccount } from "./wallet";
 
 const fmt = (v: bigint, d: number, digits = 0) =>
   Number(formatUnits(v, d)).toLocaleString("en-US", { maximumFractionDigits: digits });
@@ -21,6 +21,15 @@ const explain = (e: unknown) => {
   if (/exceeds balance|insufficient/i.test(msg)) return "Not enough $WIF in this wallet.";
   return msg.split("\n")[0];
 };
+
+const POWERED = [
+  { name: "$WIF", url: "https://worldisflat.fun", logo: "/brand/wif.png" },
+  { name: "USDG", url: "https://globaldollar.com", logo: "/brand/usdg.png" },
+  { name: "Chainlink", url: "https://chain.link", logo: "/brand/logos/chainlink.svg" },
+  { name: "DexScreener", url: "https://dexscreener.com/robinhood", logo: "/brand/logos/dexscreener.png" },
+  { name: "Solidity", url: "https://soliditylang.org", logo: "/brand/logos/solidity.svg" },
+  { name: "React", url: "https://react.dev", logo: "/brand/logos/react.svg" },
+];
 
 type Position = { burns: bigint[]; claimable: bigint };
 type Balances = { wif: bigint; usdg: bigint; eth: bigint };
@@ -45,10 +54,17 @@ export default function App() {
   const [status, setStatus] = useState<{ text: string; tx?: string; error?: boolean } | null>(null);
   const [ownFlares, setOwnFlares] = useState(() => ASSETS.map(() => 0));
   const [copied, setCopied] = useState(false);
+  const [nudge, setNudge] = useState(false);
   const burnButton = useRef<HTMLButtonElement>(null);
   const walletDialog = useRef<HTMLDialogElement>(null);
+  const openDialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => revealOnScroll(), []);
+  useEffect(() => {
+    if (!nudge) return;
+    const t = setTimeout(() => setNudge(false), 6000);
+    return () => clearTimeout(t);
+  }, [nudge]);
   useEffect(() => watchAccount(setAccount), []);
 
   const totals = round?.totals ?? ASSETS.map(() => 0n);
@@ -87,6 +103,7 @@ export default function App() {
   }, [account, refresh]);
 
   async function run(label: string, fn: (w: Awaited<ReturnType<typeof connect>>) => Promise<{ text: string; tx?: string } | void>) {
+    if (!window.ethereum) return openDialog.current?.showModal();
     setBusy(true);
     try {
       const w = await connect();
@@ -158,7 +175,7 @@ export default function App() {
   const nextOpen = (t: number) => { let d = Math.floor(t / 86400) + 1; while ([0, 6].includes(new Date(d * 86400000).getUTCDay())) d++; return d * 86400; };
 
   const clock: { label: string; at?: number } =
-    round === undefined ? { label: "Loading…" }
+    round === undefined ? { label: "Lighting the fires…" }
     : !round ? { label: "First round opens soon" }
     : open ? { label: "Picks close in", at: round.lockAt }
     : round.state === "Open" || round.state === "Locked" ? (now < round.endAt ? { label: "Picks locked · settles in", at: round.endAt } : { label: "Ready to settle" })
@@ -166,6 +183,12 @@ export default function App() {
 
   const myBurns = position?.burns.map((b, i) => (b > 0n ? `${fmt(b, 18)} on ${ASSETS[i].symbol}` : null)).filter(Boolean);
   const short = account && `${account.slice(0, 6)}…${account.slice(-4)}`;
+  const connectWallet = () => {
+    setNudge(false);
+    if (!window.ethereum) return openDialog.current?.showModal();
+    connect().then((w) => setAccount(w.account)).catch((e) => setStatus({ text: explain(e), error: true }));
+  };
+  const copy = (text: string) => navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
 
   return (
     <main>
@@ -175,9 +198,7 @@ export default function App() {
         {account ? (
           <button className="acct" onClick={() => walletDialog.current?.showModal()}>{short}</button>
         ) : (
-          <button className="pill ghost" onClick={() => connect().then((w) => setAccount(w.account)).catch((e) => setStatus({ text: explain(e), error: true }))}>
-            Connect
-          </button>
+          <button className="pill ghost" onClick={connectWallet}>Connect</button>
         )}
       </header>
 
@@ -196,6 +217,7 @@ export default function App() {
         <span>{clock.label}</span>
         {clock.at != null && <b>{countdown(clock.at - now)}</b>}
       </p>
+      {round && <p className="total"><img src="/brand/wif.png" alt="" /><b>{fmt(sum, 18)}</b> $WIF burned this round</p>}
 
       <Altars
         prices={prices}
@@ -207,14 +229,15 @@ export default function App() {
         )}
         winners={winners}
         selected={selected}
-        onSelect={setSelected}
+        onSelect={(i) => setSelected((s) => (s === i ? null : i))}
+        onTap={() => { if (!account && !open) setNudge(true); }}
         pickable={open}
         ready={round !== undefined}
         flares={flares.map((n, i) => n + ownFlares[i])}
       />
 
       {open && (
-        <section className="panel">
+        <section className={`panel burn${selected != null ? " active" : ""}`}>
           <label>
             <span className="amount-head">
               <span>{selected == null ? "Pick a stock above" : `$WIF to burn on ${ASSETS[selected].symbol}`}</span>
@@ -222,9 +245,13 @@ export default function App() {
             </span>
             <input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))} disabled={selected == null} />
           </label>
-          <button ref={burnButton} className="pill lime" onClick={vote} disabled={busy || selected == null || !amount}>
-            Burn and pick
-          </button>
+          {account ? (
+            <button ref={burnButton} className="pill lime" onClick={vote} disabled={busy || selected == null || !amount}>
+              Burn and pick
+            </button>
+          ) : (
+            <button className="pill lime" onClick={connectWallet}>Connect your wallet to burn</button>
+          )}
           <p className="warn">
             Burned $WIF is gone for good, win or lose.
             {myBurns?.length ? ` You burned ${myBurns.join(", ")} this round.` : ""}
@@ -298,7 +325,7 @@ export default function App() {
               ))}
             </ul>
             <div className="wallet-actions">
-              <button className="pill ghost" onClick={() => navigator.clipboard.writeText(account).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })}>{copied ? "Copied" : "Copy address"}</button>
+              <button className="pill ghost" onClick={() => copy(account)}>{copied ? "Copied" : "Copy address"}</button>
               <a className="pill ghost" href={explorerAddress(account)} target="_blank" rel="noreferrer">Explorer</a>
               <button className="pill ghost" onClick={() => { walletDialog.current?.close(); disconnect(); setAccount(null); }}>Disconnect</button>
             </div>
@@ -306,7 +333,36 @@ export default function App() {
         </dialog>
       )}
 
-      <footer>Prices: Chainlink on Robinhood Chain. Each round settles on the last price at or before its close. 24h change, volume and liquidity: the tokens' pools on Robinhood Chain, from <a href="https://dexscreener.com/robinhood" target="_blank" rel="noreferrer">DexScreener</a>.</footer>
+      {nudge && !account && (
+        <div className="nudge" role="status">
+          <span>Picks are closed. Connect your wallet to burn in the next round.</span>
+          <button className="pill lime" onClick={connectWallet}>Connect</button>
+        </div>
+      )}
+
+      <dialog ref={openDialog} className="wallet" aria-label="Open in your wallet" onClick={(e) => { if (e.target === e.currentTarget) e.currentTarget.close(); }}>
+        <div>
+          <p className="wallet-head">
+            Open in your wallet
+            <button aria-label="Close" onClick={() => openDialog.current?.close()}>×</button>
+          </p>
+          <div className="wallet-open">
+            {OPEN_IN.map((w) => <a key={w.name} className="pill ghost" href={w.url}>{w.name}</a>)}
+            <button className="pill ghost" onClick={() => copy(location.origin)}>{copied ? "Copied" : "Copy link for another wallet"}</button>
+          </div>
+        </div>
+      </dialog>
+
+      <footer>
+        <ul className="powered" aria-label="Powered by">
+          {POWERED.map((p) => (
+            <li key={p.name}>
+              <a href={p.url} target="_blank" rel="noreferrer"><img src={p.logo} alt="" />{p.name}</a>
+            </li>
+          ))}
+        </ul>
+        <p>Built on Robinhood Chain</p>
+      </footer>
     </main>
   );
 }

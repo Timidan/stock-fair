@@ -19,23 +19,38 @@ async function latest(feed: Address): Promise<Price | null> {
 type RoundData = readonly [bigint, bigint, bigint, bigint, bigint];
 
 // The Chainlink round current at `t`: the last one at or before it. This is exactly the proof `settle` checks.
+// Round ids count up, so this jumps back in doubling steps until it passes `t`, then bisects, instead of reading every round.
 export async function roundAt(feed: Address, t: number): Promise<{ id: bigint; price: number } | null> {
+  const read = (id: bigint) =>
+    (client.readContract({ address: feed, abi: feedAbi, functionName: "getRoundData", args: [id] }) as Promise<RoundData>)
+      .then(([, answer, , updatedAt]) => (updatedAt === 0n ? null : { id, price: Number(answer) / 1e8, at: Number(updatedAt) }))
+      .catch(() => null);
   try {
-    let [id, answer, , updatedAt] = (await client.readContract({ address: feed, abi: feedAbi, functionName: "latestRoundData" })) as RoundData;
-    for (let i = 0; i < 200 && Number(updatedAt) > t; i++) {
-      id -= 1n;
-      [, answer, , updatedAt] = (await client.readContract({ address: feed, abi: feedAbi, functionName: "getRoundData", args: [id] })) as RoundData;
-      if (updatedAt === 0n) return null;
+    const [id, answer, , updatedAt] = (await client.readContract({ address: feed, abi: feedAbi, functionName: "latestRoundData" })) as RoundData;
+    if (Number(updatedAt) <= t) return { id, price: Number(answer) / 1e8 };
+    let hi = id, lo = id, step = 1n;
+    for (;;) {
+      lo = hi - step;
+      const r = await read(lo);
+      if (!r || r.at <= t) break;
+      hi = lo;
+      step *= 2n;
     }
-    return Number(updatedAt) <= t ? { id, price: Number(answer) / 1e8 } : null;
+    while (hi - lo > 1n) {
+      const mid = lo + (hi - lo) / 2n, r = await read(mid);
+      if (r && r.at > t) hi = mid;
+      else lo = mid;
+    }
+    const found = await read(lo);
+    return found && found.at <= t ? { id: found.id, price: found.price } : null;
   } catch {
     return null;
   }
 }
 
-export type Market = { change24h: number | null; volume24h: number; liquidity: number };
+export type Market = { change24h: number | null; volume24h: number; liquidity: number; marketCap: number | null };
 
-type DexPair = { chainId: string; priceChange?: { h24?: number }; volume?: { h24?: number }; liquidity?: { usd?: number } };
+type DexPair = { chainId: string; priceChange?: { h24?: number }; volume?: { h24?: number }; liquidity?: { usd?: number }; marketCap?: number };
 
 // Totals across the token's pools on this chain (DexScreener lists up to 30, deepest first); the 24h move is the deepest pool's.
 async function market(token: Address): Promise<Market | null> {
@@ -48,6 +63,7 @@ async function market(token: Address): Promise<Market | null> {
       change24h: deepest.priceChange?.h24 ?? null,
       volume24h: pools.reduce((sum, p) => sum + (p.volume?.h24 ?? 0), 0),
       liquidity: pools.reduce((sum, p) => sum + (p.liquidity?.usd ?? 0), 0),
+      marketCap: deepest.marketCap ?? null,
     };
   } catch {
     return null;
@@ -103,11 +119,12 @@ export type Fair = {
 export function useFair(refresh: number): Fair {
   const [fair, setFair] = useState<Fair>({ round: undefined, past: [], offline: false, carry: 0n, prices: ASSETS.map(() => null), startPrices: ASSETS.map(() => null), reading: null, flares: ASSETS.map(() => 0) });
   const seen = useRef<{ block: bigint | null; round: bigint | null }>({ block: null, round: null });
+  const starts = useRef<{ round: bigint; prices: (number | null)[] } | null>(null); // a round's lock prices never change
 
   useEffect(() => {
     let alive = true;
     const load = async () => {
-      const prices = await Promise.all(ASSETS.map((a) => latest(a.feed)));
+      const pricesRead = Promise.all(ASSETS.map((a) => latest(a.feed)));
       let round: Round | null = null, reading: Reading | null = null, past: Past[] = [], carry = 0n, startPrices: (number | null)[] = ASSETS.map(() => null);
       const bumps = ASSETS.map(() => 0);
       if (STOCK_FAIR) {
@@ -125,8 +142,14 @@ export function useFair(refresh: number): Fair {
             carriedIn: raw.carriedIn, payoutBase: raw.payoutBase,
           };
           carry = (await client.readContract({ address, abi: stockFairAbi, functionName: "carry" })) as bigint;
+          // Show the round now: everything below only adds to it.
+          const known = await pricesRead, shown = round, shownCarry = carry;
+          if (alive) setFair((f) => ({ ...f, round: shown, carry: shownCarry, prices: known, offline: known.every((p) => p == null) }));
           const now = Math.floor(Date.now() / 1000);
-          if (now >= round.lockAt && round.state !== "Settled") startPrices = await Promise.all(ASSETS.map((a) => roundAt(a.feed, round!.lockAt).then((r) => r?.price ?? null)));
+          if (now >= round.lockAt && round.state !== "Settled") {
+            if (starts.current?.round !== id) starts.current = { round: id, prices: await Promise.all(ASSETS.map((a) => roundAt(a.feed, round!.lockAt).then((r) => r?.price ?? null))) };
+            startPrices = starts.current.prices;
+          }
           const head = await client.getBlockNumber();
           if (round.state === "Settled") {
             // The tx link is a nicety: a bounded log search that may fail must not hide the result.
@@ -156,6 +179,7 @@ export function useFair(refresh: number): Fair {
           );
         }
       }
+      const prices = await pricesRead;
       if (alive) setFair((f) => ({ round, past, carry, offline: prices.every((p) => p == null), prices, startPrices, reading, flares: f.flares.map((n, i) => n + bumps[i]) }));
     };
     const run = () => load().catch(() => alive && setFair((f) => ({ ...f, offline: true })));

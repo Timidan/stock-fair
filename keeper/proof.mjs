@@ -9,7 +9,7 @@ const FAIR = "0x16e7f897c6ee9394fbf08716515c66e8b6f85937";
 const DEPLOY_BLOCK = 101105934n;
 const EXPLORER = "https://robinhoodchain.blockscout.com";
 // The keeper's weekday rounds until the final closes: [day, picks close, round ends] in UTC (New York moves off DST on 1 Nov).
-const SCHEDULE = [["2026-10-30", "13:30", "20:00"], ["2026-11-02", "14:30", "21:00"], ["2026-11-03", "14:30", "21:00"], ["2026-11-04", "14:30", "21:00"], ["2026-11-05", "14:30", "21:00"], ["2026-11-06", "14:30", "21:00"]];
+const SCHEDULE = [["2026-10-30", "13:30", "20:00"], ["2026-11-02", "14:30", "21:00"], ["2026-11-03", "14:30", "21:00"], ["2026-11-04", "14:30", "21:00"], ["2026-11-05", "14:30", "21:00"], ["2026-11-06", "14:30", "21:00"], ["2026-11-09", "14:30", "21:00"], ["2026-11-10", "14:30", "21:00"], ["2026-11-11", "14:30", "21:00"], ["2026-11-12", "14:30", "21:00"], ["2026-11-13", "14:30", "21:00"], ["2026-11-16", "14:30", "21:00"]];
 const SYMBOL = { "0xaf3d76f1834a1d425780943c99ea8a608f8a93f9": "AAPL", "0xd0601ce157db5bdc3162bbac2a2c8af5320d9eec": "NVDA", "0x322f0929c4625ed5bad873c95208d54e1c003b2d": "TSLA", "0x117cc2133c37b721f49de2a7a74833232b3b4c0c": "SPY" };
 const abi = parseAbi([
   "event RoundCreated(uint256 indexed roundId, address indexed sponsor, (address token, address feed)[] assets, uint256 lockAt, uint256 endAt, uint256 pot)",
@@ -60,9 +60,9 @@ for (const created of opened) {
       id,
       day(lockAt),
       `${amount(r.pot, 6)} USDG${r.carriedIn ? ` (${amount(r.carriedIn, 6)} carried in)` : ""}`,
-      tx(created, "open"),
+      tx(created, hm(Number((await client.getBlock({ blockNumber: created.blockNumber })).timestamp)) + " UTC"),
       votes.length ? `${amount(burned, 18)} $WIF · ${txs(votes)}` : now < lockAt ? `picks close ${hm(lockAt)} UTC` : "none",
-      settled ? tx(settled, "settle") : voided ? `void · ${tx(voided, "tx")}` : now < endAt ? `after ${hm(endAt)} UTC` : "due",
+      settled ? tx(settled, "settle") : voided ? `void · ${tx(voided, "tx")}` : now < endAt ? `after ${hm(endAt)} UTC` : "settling",
       winner,
       claims.length ? `${amount(paid, 6)} USDG · ${txs(claims)}` : refund ? `refunded · ${tx(refund, "tx")}` : settled && r.payoutBase === 0n ? "nobody backed it, pot carried" : settled ? "not claimed yet" : "",
     ],

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { BaseError, formatUnits, parseUnits, type Address } from "viem";
-import { ASSETS, GET_WIF, STOCK_FAIR, USDG, WIF, client, erc20Abi, explorerTx, stockFairAbi } from "./chain";
+import { ASSETS, GET_WIF, STOCK_FAIR, USDG, WIF, client, erc20Abi, explorerAddress, explorerTx, stockFairAbi } from "./chain";
 import { countdown, roundAt, useFair, useMarkets, useNow } from "./data";
 import { Altars } from "./Altars";
 import { Oracle } from "./Oracle";
 import { emberFlight, revealOnScroll } from "./motion";
-import { connect, watchAccount } from "./wallet";
+import { connect, disconnect, watchAccount } from "./wallet";
 
 const fmt = (v: bigint, d: number, digits = 0) =>
   Number(formatUnits(v, d)).toLocaleString("en-US", { maximumFractionDigits: digits });
@@ -25,6 +25,12 @@ const explain = (e: unknown) => {
 type Position = { burns: bigint[]; claimable: bigint };
 type Balances = { wif: bigint; usdg: bigint; eth: bigint };
 
+const TOKENS = [
+  { key: "wif", symbol: "$WIF", name: "World is Flat", decimals: 18, digits: 2 },
+  { key: "usdg", symbol: "USDG", name: "Global Dollar", decimals: 6, digits: 2 },
+  { key: "eth", symbol: "ETH", name: "For gas", decimals: 18, digits: 6 },
+] as const;
+
 export default function App() {
   const [refresh, setRefresh] = useState(0);
   const { round, past, offline, carry, prices, startPrices, reading, flares } = useFair(refresh);
@@ -38,7 +44,9 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ text: string; tx?: string; error?: boolean } | null>(null);
   const [ownFlares, setOwnFlares] = useState(() => ASSETS.map(() => 0));
+  const [copied, setCopied] = useState(false);
   const burnButton = useRef<HTMLButtonElement>(null);
+  const walletDialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => revealOnScroll(), []);
   useEffect(() => watchAccount(setAccount), []);
@@ -114,7 +122,7 @@ export default function App() {
       await client.waitForTransactionReceipt({ hash });
       // Only once the burn is confirmed: the embers you see are WIF that is actually gone.
       const stage = document.querySelectorAll(".altar .stage")[selected];
-      if (burnButton.current && stage) await emberFlight(burnButton.current, stage);
+      if (burnButton.current && stage) await emberFlight(burnButton.current, stage, ASSETS[selected].color);
       setOwnFlares((f) => f.map((n, i) => (i === selected ? n + 1 : n)));
       return { text: `Burned ${Number(amount).toLocaleString()} $WIF on ${ASSETS[selected].symbol}.`, tx: hash };
     });
@@ -149,31 +157,23 @@ export default function App() {
   // The keeper opens each weekday's round on its first run after 00:00 UTC.
   const nextOpen = (t: number) => { let d = Math.floor(t / 86400) + 1; while ([0, 6].includes(new Date(d * 86400000).getUTCDay())) d++; return d * 86400; };
 
-  const clock =
-    round === undefined ? "Loading…"
-    : !round ? "First round opens soon"
-    : open ? `Picks close in ${countdown(round.lockAt - now)}`
-    : round.state === "Open" || round.state === "Locked" ? (now < round.endAt ? `Picks locked · settles in ${countdown(round.endAt - now)}` : "Ready to settle")
-    : `Round ${round.id} ${round.state === "Settled" ? "settled" : "void"} · next opens in ${countdown(nextOpen(now) - now)}`;
+  const clock: { label: string; at?: number } =
+    round === undefined ? { label: "Loading…" }
+    : !round ? { label: "First round opens soon" }
+    : open ? { label: "Picks close in", at: round.lockAt }
+    : round.state === "Open" || round.state === "Locked" ? (now < round.endAt ? { label: "Picks locked · settles in", at: round.endAt } : { label: "Ready to settle" })
+    : { label: `Round ${round.id} ${round.state === "Settled" ? "settled" : "void"} · next opens in`, at: nextOpen(now) };
 
   const myBurns = position?.burns.map((b, i) => (b > 0n ? `${fmt(b, 18)} on ${ASSETS[i].symbol}` : null)).filter(Boolean);
-  const holdings = balances && (
-    <span className="holdings">
-      <span>{fmt(balances.wif, 18, 2)} $WIF</span>
-      <span>{fmt(balances.usdg, 6, 2)} USDG</span>
-      <span>{fmt(balances.eth, 18, 6)} ETH</span>
-    </span>
-  );
+  const short = account && `${account.slice(0, 6)}…${account.slice(-4)}`;
 
   return (
     <main>
       <header>
         <span className="mark"><img src="/brand/mark.svg" alt="" width="32" height="32" />Stock Fair</span>
         <span className="by">a $WIF fair on Robinhood Chain</span>
-        <span className="clock">{clock}</span>
-        {holdings}
         {account ? (
-          <span className="acct">{account.slice(0, 6)}…{account.slice(-4)}</span>
+          <button className="acct" onClick={() => walletDialog.current?.showModal()}>{short}</button>
         ) : (
           <button className="pill ghost" onClick={() => connect().then((w) => setAccount(w.account)).catch((e) => setStatus({ text: explain(e), error: true }))}>
             Connect
@@ -192,11 +192,16 @@ export default function App() {
         </span>
       </p>
 
+      <p className="timer">
+        <span>{clock.label}</span>
+        {clock.at != null && <b>{countdown(clock.at - now)}</b>}
+      </p>
+
       <Altars
         prices={prices}
         markets={markets}
         shares={shares}
-        burned={totals.map((t) => fmt(t, 18))}
+        burned={totals.map((t) => Number(formatUnits(t, 18)))}
         returns={ASSETS.map((_, i) =>
           reading ? reading.end[i] / reading.start[i] - 1 : startPrices[i] && prices[i] ? prices[i]!.price / startPrices[i]! - 1 : null,
         )}
@@ -204,6 +209,7 @@ export default function App() {
         selected={selected}
         onSelect={setSelected}
         pickable={open}
+        ready={round !== undefined}
         flares={flares.map((n, i) => n + ownFlares[i])}
       />
 
@@ -212,7 +218,7 @@ export default function App() {
           <label>
             <span className="amount-head">
               <span>{selected == null ? "Pick a stock above" : `$WIF to burn on ${ASSETS[selected].symbol}`}</span>
-              {holdings}
+              {balances && <span>Balance {fmt(balances.wif, 18, 2)} $WIF</span>}
             </span>
             <input inputMode="numeric" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))} disabled={selected == null} />
           </label>
@@ -275,7 +281,32 @@ export default function App() {
         </section>
       )}
 
-      <footer>Prices: Chainlink on Robinhood Chain. Each round settles on the last price at or before its close. 24h change, volume and liquidity: the tokens' pools on Robinhood Chain, from DexScreener.</footer>
+      {account && (
+        <dialog ref={walletDialog} className="wallet" aria-label="Wallet" onClick={(e) => { if (e.target === e.currentTarget) e.currentTarget.close(); }}>
+          <div>
+            <p className="wallet-head">
+              {short}
+              <button aria-label="Close" onClick={() => walletDialog.current?.close()}>×</button>
+            </p>
+            <ul>
+              {TOKENS.map((t) => (
+                <li key={t.key}>
+                  <img src={`/brand/${t.key}.png`} alt="" />
+                  <span>{t.symbol}<small>{t.name}</small></span>
+                  <b>{balances ? fmt(balances[t.key], t.decimals, t.digits) : "…"}</b>
+                </li>
+              ))}
+            </ul>
+            <div className="wallet-actions">
+              <button className="pill ghost" onClick={() => navigator.clipboard.writeText(account).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); })}>{copied ? "Copied" : "Copy address"}</button>
+              <a className="pill ghost" href={explorerAddress(account)} target="_blank" rel="noreferrer">Explorer</a>
+              <button className="pill ghost" onClick={() => { walletDialog.current?.close(); disconnect(); setAccount(null); }}>Disconnect</button>
+            </div>
+          </div>
+        </dialog>
+      )}
+
+      <footer>Prices: Chainlink on Robinhood Chain. Each round settles on the last price at or before its close. 24h change, volume and liquidity: the tokens' pools on Robinhood Chain, from <a href="https://dexscreener.com/robinhood" target="_blank" rel="noreferrer">DexScreener</a>.</footer>
     </main>
   );
 }

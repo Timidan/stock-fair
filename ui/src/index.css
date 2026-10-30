@@ -26,13 +26,12 @@ header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; pad
 .mark { display: inline-flex; align-items: center; gap: 8px; font-family: var(--serif); font-size: 22px; font-weight: 700; }
 .mark img { display: block; margin-top: -6px; }
 .by { color: var(--ink-muted); font-size: 13px; }
-.clock { margin-left: auto; color: var(--ink-muted); font-variant-numeric: tabular-nums; }
-.acct { padding: 6px 12px; border: 1px solid var(--ink-faint); border-radius: 999px; font-variant-numeric: tabular-nums; }
-.holdings { display: inline-flex; flex-wrap: wrap; gap: 0 8px; color: var(--ink-muted); font-size: 14px; font-variant-numeric: tabular-nums; }
-.holdings span:first-child { color: var(--ink); font-weight: 600; }
-.holdings span + span::before { content: "·"; margin-right: 8px; }
+.acct { padding: 8px 14px; border: 1px solid var(--ink-faint); border-radius: 999px; background: none; color: var(--ink); font: 600 14px var(--sans); font-variant-numeric: tabular-nums; cursor: pointer; transition: border-color var(--dur) var(--ease); }
+.acct:hover { border-color: var(--ink-muted); }
+.acct:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+header > .acct, header > .pill { margin-left: auto; }
 
-h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(30px, 5.4vw, 56px); line-height: 1.02; text-align: center; margin: 16px auto 8px; max-width: 16ch; text-wrap: balance; }
+h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(30px, 5.4vw, 56px); line-height: 1.02; text-align: center; margin: 16px auto 8px; max-width: 26ch; text-wrap: balance; }
 /* The pot is the prize plaque: gold ring, gilded amount, a lozenge at each end. */
 .lede { display: flex; align-items: center; justify-content: center; gap: 18px; width: fit-content; max-width: 100%; margin: 16px auto 24px; padding: 14px 26px; border-radius: 28px; background: linear-gradient(#ddb95e24, #ddb95e0d), #0d0d0db8; box-shadow: inset 0 0 0 1px #ddb95e73, 0 0 48px #ddb95e24; font: 600 clamp(22px, 3.2vw, 32px)/1.2 var(--serif); text-align: center; text-wrap: balance; }
 .lede::before, .lede::after { content: ""; flex: none; width: 7px; height: 7px; background: var(--gold); transform: rotate(45deg); }
@@ -43,19 +42,23 @@ h1 { font-family: var(--serif); font-weight: 600; font-size: clamp(30px, 5.4vw, 
 body::before { content: ""; position: fixed; inset: 0; z-index: -1; background: url(/art/temple.webp) center top / cover no-repeat; opacity: 0.32; mask-image: linear-gradient(#000 40%, transparent); }
 
 
-.altars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; }
+.timer { position: relative; z-index: 1; display: grid; justify-items: center; margin: 0; text-align: center; }
+.timer span { font: 600 20px var(--serif); letter-spacing: 0.06em; color: var(--ink-muted); }
+.timer b { font: 700 clamp(44px, 7.4vw, 76px)/1.08 var(--sans); font-variant-numeric: tabular-nums; color: var(--lime); text-shadow: 0 0 36px #d4fc5040; }
+
+.altars { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 4px; }
 .altar { position: relative; display: grid; justify-items: center; align-content: end; gap: 2px; padding: 0 0 16px; background: none; border: 0; border-radius: 20px; color: var(--ink); font: inherit; cursor: pointer; transition: background var(--dur) var(--ease); }
 .altar:disabled { cursor: default; color: var(--ink); }
 .altars.pickable .altar:hover { background: #ffffff08; }
 .altar:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-.altar.selected { background: #d4fc500d; box-shadow: inset 0 0 0 1px #d4fc5059; }
+.altar.selected { background: color-mix(in srgb, var(--flame) 5%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--flame) 35%, transparent); }
 /* Cropped brazier art is 448x700 with the bowl rim at 54% height; the fire's base sits just inside it. */
 .stage { position: relative; width: 100%; max-width: 230px; aspect-ratio: 448 / 700; }
 .brazier { position: absolute; inset: 0; width: 100%; height: 100%; user-select: none; }
-.fire { position: absolute; left: 22%; width: 56%; bottom: 43%; aspect-ratio: 244 / 480; pointer-events: none; }
-.flame { width: 100%; height: 100%; filter: drop-shadow(0 0 12px #d4fc5033); }
+.fire { position: absolute; left: 0; width: 100%; bottom: 43%; aspect-ratio: 436 / 480; pointer-events: none; }
+.flame { display: block; width: 100%; height: 100%; }
 .symbol { font-family: var(--serif); font-size: clamp(20px, 3vw, 28px); font-weight: 600; letter-spacing: 0.12em; margin-top: -4%; }
-.altar.selected .symbol { color: var(--lime); }
+.altar.selected .symbol { color: var(--flame); }
 .altar.winner .symbol { color: var(--gold); }
 .name { font-size: 12px; color: var(--ink-muted); letter-spacing: 0.04em; }
 .price { font-size: 17px; font-variant-numeric: tabular-nums; margin-top: 6px; }
@@ -94,6 +97,22 @@ body::before { content: ""; position: fixed; inset: 0; z-index: -1; background: 
   .ways .pill:hover svg { color: var(--lime); transform: translate(2px, -2px); }
 }
 
+.wallet { width: min(400px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--ink-faint); border-radius: 28px; background: var(--panel); color: var(--ink); }
+.wallet::backdrop { background: #000000a6; backdrop-filter: blur(4px); }
+.wallet > div { display: grid; gap: 16px; padding: 20px 24px 24px; }
+.wallet-head { display: flex; justify-content: space-between; align-items: center; margin: 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wallet-head button { width: 36px; height: 36px; margin-right: -8px; border: 0; border-radius: 50%; background: none; color: var(--ink-muted); font-size: 24px; line-height: 1; cursor: pointer; }
+.wallet-head button:hover { background: #ffffff14; color: var(--ink); }
+.wallet ul { display: grid; gap: 4px; list-style: none; margin: 0; padding: 0; }
+.wallet li { display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--ink-faint); }
+.wallet li:first-child { border-top: 0; }
+.wallet img { width: 40px; height: 40px; border-radius: 50%; }
+.wallet li span { font-size: 16px; font-weight: 600; }
+.wallet small { display: block; font-size: 13px; font-weight: 400; color: var(--ink-muted); }
+.wallet li b { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wallet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.wallet-actions .pill { flex: 1 1 auto; display: inline-flex; justify-content: center; align-items: center; text-decoration: none; white-space: nowrap; }
+
 .status { margin: 16px 0 0; font-size: 14px; }
 .status.error { color: var(--down); }
 .status a { color: var(--lime); }
@@ -120,6 +139,7 @@ body::before { content: ""; position: fixed; inset: 0; z-index: -1; background: 
 .past li span:first-child { color: var(--ink); }
 
 footer { margin-top: 40px; font-size: 13px; color: var(--ink-muted); text-align: center; }
+footer a { color: inherit; }
 
 /* Motion: one easing for everything (--ease), transform/opacity only. */
 .pill, .altar { transition: transform 160ms var(--ease), background var(--dur) var(--ease); }
@@ -128,7 +148,7 @@ footer { margin-top: 40px; font-size: 13px; color: var(--ink-muted); text-align:
 .altar.selected .stage { transform: translateY(-4px); }
 
 .embers { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
-.embers span { position: absolute; border-radius: 50%; box-shadow: 0 0 8px #d4fc5099; }
+.embers span { position: absolute; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
 
 /* Entering the temple: the colonnade drifts toward you as you scroll (where scroll timelines exist). */
 @supports (animation-timeline: scroll()) {
@@ -155,7 +175,6 @@ footer { margin-top: 40px; font-size: 13px; color: var(--ink-muted); text-align:
   .oracle { grid-template-columns: 1fr; gap: 24px; }
   .past li { grid-template-columns: 1fr 1fr; }
   .by { display: none; }
-  header .holdings { order: 1; margin-left: auto; }
 }
 @media (prefers-reduced-motion: reduce) {
   .altar, .ways svg { transition: none; }

@@ -10,7 +10,7 @@ forge build
 forge test
 ```
 
-The 12 tests run on a fork of Robinhood Chain mainnet at block 98,482,863 (26 Oct 2026). They replay real Chainlink history for Fri 23 Oct, 14:00–20:00 UTC, against the real stock tokens and feeds. Only the WIF and USDG balances come from `deal`.
+The 12 tests run on a fork of Robinhood Chain mainnet at block 98,482,863 (26 Oct 2026). They replay real Chainlink history for Fri 23 Oct, 14:00–20:00 UTC, against the real Stock Tokens and feeds. Only the WIF and USDG balances come from `deal`.
 
 | Test | Checks |
 |---|---|
@@ -19,7 +19,7 @@ The 12 tests run on a fork of Robinhood Chain mainnet at block 98,482,863 (26 Oc
 | `testVoidAndRefund` | A round nobody settles within 7 days voids; the sponsor gets the deposit back once, and the WIF stays burned |
 | `testBadProofReverts` · `testRetiredPhaseWithoutSuccessorReverts` | A price round that wasn't current at the boundary is rejected |
 | `testSettleWithLatestEndRound` | The feed's latest round, with no successor yet, settles |
-| `testPausedOracleCanRetrySettlement` | A paused stock token blocks settlement until it resumes |
+| `testPausedOracleCanRetrySettlement` | A paused Stock Token blocks settlement until it resumes |
 | `testDuplicateAssetReverts` · `testZeroPotReverts` · `testUnlistedFeedReverts` | Bad rounds are refused |
 | `testFundUnavailable` | There is no `fund()`, so nobody can add to another sponsor's pot |
 | `testReplayFeedEtchedOverProxy` | The replay feed used by the local demo |
@@ -56,6 +56,6 @@ forge script script/FindRound.s.sol:FindRound --sig 'run(address,uint256)' \
 ## Known limits
 
 - **Feed phases.** The "next round" check is not phase-aware. A boundary that falls in an older proxy phase is rejected rather than proven.
-- **Pauses.** Only the stock token's pause flag at settlement time is checked. A corporate-action pause that ended before settlement is not seen.
+- **Pauses.** Only the Stock Token's pause flag at settlement time is checked. A corporate-action pause that ended before settlement is not seen.
 - **Schedule.** The contract doesn't enforce weekdays. The keeper opens rounds Monday to Friday only.
 - **Dust.** Payouts round down; leftover dust stays in the contract.

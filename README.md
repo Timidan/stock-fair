@@ -20,7 +20,7 @@ A new round every US market day, on Robinhood Chain mainnet.
 
 <img src="docs/screens/live.jpg" alt="The live page: four braziers for AAPL, NVDA, TSLA and SPY, with live Chainlink prices and the $WIF burned on each">
 
-Every weekday, Stock Fair opens a round on four stock tokens: AAPL, NVDA, TSLA and SPY. Before the US market opens, $WIF holders burn $WIF on the stock they think will gain most by the close. At the close, the contract reads Chainlink's prices on chain. Everyone who backed the winner splits 80% of the pot in proportion to their burn, and 20% rolls into the next round. It is the WIF team's own format, burn to vote, pointed at the stocks on Robinhood Chain.
+Every weekday, Stock Fair opens a round on four Stock Tokens: AAPL, NVDA, TSLA and SPY. Before the US market opens, $WIF holders burn $WIF on the stock they think will gain most by the close. At the close, the contract reads Chainlink's prices on chain. Everyone who backed the winner splits 80% of the pot in proportion to their burn, and 20% rolls into the next round. It is the WIF team's own format, burn to vote, pointed at the stocks on Robinhood Chain.
 
 > [!IMPORTANT]
 > Burned $WIF is gone for good, win or lose. Picks close at the US open (09:30 New York time) and each round settles on the close (16:00).
@@ -39,7 +39,7 @@ Every weekday, Stock Fair opens a round on four stock tokens: AAPL, NVDA, TSLA a
 | | Used for |
 |---|---|
 | **$WIF** | The only way to pick. Every vote burns it. |
-| **Stock tokens** | AAPL, NVDA, TSLA and SPY on Robinhood Chain. |
+| **Stock Tokens** | AAPL, NVDA, TSLA and SPY on Robinhood Chain. |
 | **Chainlink data feeds** | Each stock's price at the lock and the close, checked by the contract. |
 | **USDG** | The pot. |
 
@@ -96,7 +96,7 @@ Every round the contract has run, with links to each transaction. The table is r
 | Keeper and sponsor | [`0x1589bbF98a1fa76607F7f4139F1188511407Dc32`](https://robinhoodchain.blockscout.com/address/0x1589bbF98a1fa76607F7f4139F1188511407Dc32) |
 | $WIF | `0x5173b8eA6923c2d40267890D45C46a3480954773` |
 | USDG | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
-| Stock tokens and feeds | [SPEC.md](SPEC.md#chain-and-addresses-robinhood-chain-mainnet-id-4663) |
+| Stock Tokens and feeds | [SPEC.md](SPEC.md#chain-and-addresses-robinhood-chain-mainnet-id-4663) |
 
 ## Try it
 

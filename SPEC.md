@@ -2,7 +2,7 @@
 
 How the deployed contract behaves. Source: [contracts/src/StockFair.sol](contracts/src/StockFair.sol).
 
-**One line:** $WIF holders burn $WIF to pick the stock token that will gain most over a round. Voters on the winner split 80% of a USDG pot funded before voting opened; 20% rolls into the next round.
+**One line:** $WIF holders burn $WIF to pick the Stock Token that will gain most over a round. Voters on the winner split 80% of a USDG pot funded before voting opened; 20% rolls into the next round.
 
 ## Chain and addresses (Robinhood Chain mainnet, id 4663)
 | Name | Address | Decimals |
@@ -11,7 +11,7 @@ How the deployed contract behaves. Source: [contracts/src/StockFair.sol](contrac
 | USDG | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` | **6** |
 | Burn address | `0x000000000000000000000000000000000000dEaD` | |
 
-| Asset | Stock token | Chainlink proxy (8 dec) |
+| Asset | Stock Token | Chainlink proxy (8 dec) |
 |---|---|---|
 | AAPL | `0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9` | `0x6B22A786bAa607d76728168703a39Ea9C99f2cD0` |
 | SPY | `0x117cc2133c37B721F49dE2A7a74833232B3B4C0C` | `0x319724394D3A0e3669269846abE664Cd621f9f6A` |

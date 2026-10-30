@@ -17,6 +17,9 @@ export function watchAccount(onChange: (account: Address | null) => void) {
   return () => ethereum.removeListener?.("accountsChanged", update);
 }
 
+// Forgets this site in wallets that support it, so a reload doesn't reconnect.
+export const disconnect = () => window.ethereum?.request({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] }).catch(() => {});
+
 export async function connect() {
   if (!window.ethereum) throw new Error("No wallet found. Install a browser wallet to vote.");
   const wallet = createWalletClient({ chain: robinhood, transport: custom(window.ethereum) });

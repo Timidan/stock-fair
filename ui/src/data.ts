@@ -179,7 +179,7 @@ export function useNow(ms = 1000) {
 }
 
 export function countdown(seconds: number) {
-  if (seconds <= 0) return "0m";
-  const d = Math.floor(seconds / 86400), h = Math.floor((seconds % 86400) / 3600), m = Math.floor((seconds % 3600) / 60);
-  return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m ${seconds % 60}s`;
+  const s = Math.max(0, seconds), two = (n: number) => String(n).padStart(2, "0");
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  return `${d ? `${d}d ` : ""}${two(h)}:${two(m)}:${two(s % 60)}`;
 }

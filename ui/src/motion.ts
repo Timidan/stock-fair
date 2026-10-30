@@ -1,6 +1,6 @@
 // The one bespoke animation: your burned $WIF flies into the brazier you picked.
 // Halftone dots thrown on an arc from the Burn button into the bowl.
-export function emberFlight(from: Element, to: Element): Promise<void> {
+export function emberFlight(from: Element, to: Element, color: string): Promise<void> {
   if (matchMedia("(prefers-reduced-motion: reduce)").matches) return Promise.resolve();
   const a = from.getBoundingClientRect(), b = to.getBoundingClientRect();
   const x0 = a.left + a.width / 2, y0 = a.top + a.height / 2;
@@ -12,7 +12,7 @@ export function emberFlight(from: Element, to: Element): Promise<void> {
   const flights = Array.from({ length: 22 }, (_, i) => {
     const dot = document.createElement("span");
     const size = 5 + Math.random() * 6;
-    dot.style.cssText = `width:${size}px;height:${size}px;left:${x0 - size / 2}px;top:${y0 - size / 2}px;background:${i % 4 ? "#d4fc50" : "#f7f5f1"}`;
+    dot.style.cssText = `width:${size}px;height:${size}px;left:${x0 - size / 2}px;top:${y0 - size / 2}px;background:${i % 4 ? color : "#f7f5f1"};color:${color}`;
     layer.append(dot);
     const spread = (Math.random() - 0.5) * 60;
     const frames = Array.from({ length: 9 }, (_, k) => {

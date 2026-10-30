@@ -216,7 +216,7 @@ export default function App() {
               <li key={p.id.toString()}>
                 <span>Round {p.id.toString()}</span>
                 <span>{p.state === "Void" ? "Void" : ASSETS.filter((_, i) => (p.winnerMask >> i) & 1).map((a) => a.symbol).join(" + ") || "Unsettled"}</span>
-                <span>{fmt(p.pot, 6)} USDG</span>
+                <span>{fmt(p.pot, 6, 2)} USDG</span>
                 <span>{fmt(p.burned, 18)} $WIF burned</span>
               </li>
             ))}

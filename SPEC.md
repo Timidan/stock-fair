@@ -1,6 +1,6 @@
 # Stock Fair: contract spec
 
-This is the shared contract between `contracts/` (owned by Astra) and `ui/` (owned by Claude). Change it only by agreement.
+How the deployed contract behaves. Source: [contracts/src/StockFair.sol](contracts/src/StockFair.sol).
 
 **One line:** $WIF holders burn $WIF to pick the stock token that will gain most over a round. Voters on the winner split 80% of a USDG pot funded before voting opened; 20% rolls into the next round.
 
@@ -15,8 +15,8 @@ This is the shared contract between `contracts/` (owned by Astra) and `ui/` (own
 |---|---|---|
 | AAPL | `0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9` | `0x6B22A786bAa607d76728168703a39Ea9C99f2cD0` |
 | SPY | `0x117cc2133c37B721F49dE2A7a74833232B3B4C0C` | `0x319724394D3A0e3669269846abE664Cd621f9f6A` |
-| NVDA | from Robinhood registry `api.robinhood.com/rhj/assets` | `0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15` |
-| TSLA | from Robinhood registry | `0x4A1166a659A55625345e9515b32adECea5547C38` |
+| NVDA | `0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC` | `0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15` |
+| TSLA | `0x322F0929c4625eD5bAd873c95208D54E1c003b2d` | `0x4A1166a659A55625345e9515b32adECea5547C38` |
 
 **Feed facts (checked 26 Oct):**
 - Feeds are 24/5, with a 0.5% deviation trigger and a 24h heartbeat, so updates are sparse.
@@ -39,11 +39,11 @@ This is the shared contract between `contracts/` (owned by Astra) and `ui/` (own
    - For each asset and each boundary time `t` (`lockAt` for the start, `endAt` for the end), the caller passes the Chainlink round that was current at `t`. The contract checks:
      - `updatedAt(r) <= t`
      - either the next round's `updatedAt > t`, or, when `getRoundData(r+1)` reverts or returns `updatedAt == 0`, `r` equals the feed's current `latestRoundData()` round id
-     - `t - updatedAt(r) <= MAX_STALE` (a constant, e.g. 3 days)
+     - `t - updatedAt(r) <= MAX_STALE` (3 days)
    - Return = `end / start - 1`, in fixed point. The winner set is the asset(s) with the highest return. Ties share.
    - If total weight on the winning assets is positive, `rolled = pot × ROLLOVER_BPS / 10000` goes into `carry`, with `ROLLOVER_BPS = 2000` (20%). The round stores `payoutBase = pot - rolled` for claims. Integer division rounds down.
    - If nobody backed a winning asset, the whole pot goes into `carry`, `payoutBase` is zero, and the sponsor cannot refund it. Both cases emit `RolledOver(roundId, rolled)`.
-   - Reverts with `OraclePaused()` if any asset token's `oraclePaused()` is true at settle time, allowing retries; **void** if any proof fails the staleness bound or if nobody settles within `SETTLE_WINDOW` (e.g. 7 days) after `endAt` (`voidExpired` is callable by anyone).
+   - Reverts with `OraclePaused()` if any asset token's `oraclePaused()` is true at settle time, allowing retries; **void** if any proof fails the staleness bound or if nobody settles within `SETTLE_WINDOW` (7 days) after `endAt` (`voidExpired` is callable by anyone).
 4. `claim(roundId)`
    - Payout = `payoutBase × (voter's weight on winning assets) / (total weight on winning assets)`.
    - One claim per voter. Leftover dust stays in the contract.
@@ -58,14 +58,14 @@ Carry left after the last round stays in the contract until someone opens anothe
 - Events: `RoundCreated` (pot includes carry), `Voted(roundId, voter, assetIndex, amount)`, `Settled(roundId, startPrices, endPrices, winnerMask)`, `RolledOver(roundId, amount)`, `Voided`, `Claimed`, `Refunded`. The UI builds its leaderboard and history from these, so there's no backend.
 
 ## Out of scope for v1
-- Fee or USDG→WIF buyback. Add it once there's a route with real depth; the WIF/USDG pool has about $129 of USDG.
+- Fee or USDG→WIF buyback. Add it once a WIF/USDG route has real depth.
 - Admin keys, upgradeability and pausing. The contract is immutable.
 - Rounds that span a weekend. Run daily rounds Monday to Friday.
 
-## Acceptance
+## Tests and deployment
 - Fork tests against mainnet (anvil `--fork-url https://rpc.mainnet.chain.robinhood.com`) cover:
   - a full round: create → votes (WIF actually lands at the burn address) → warp → settle with real round ids → claims add up to 80% of the pot, with 20% carried into the next round
   - a round with no weight on the winner carries its whole pot into the next round and cannot be refunded
-  - a void round, followed by a refund of the full pot including any carriedIn
+  - a void round, followed by a refund of the sponsor's deposit, with any carry returned to the next pot
   - a bad round-id proof, which must revert
-- A deploy script verifies the contract on the explorer. Mainnet deploy happens only after the user funds the deployer.
+- Deployed on mainnet at [`0x16e7f897c6ee9394fbf08716515c66e8b6f85937`](https://robinhoodchain.blockscout.com/address/0x16e7f897c6ee9394fbf08716515c66e8b6f85937) in block 101,105,934, with the source [verified on Sourcify](https://repo.sourcify.dev/4663/0x16E7F897C6eE9394Fbf08716515c66e8b6f85937) (exact match).

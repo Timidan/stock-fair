@@ -27,8 +27,6 @@ const POWERED = [
   { name: "USDG", url: "https://globaldollar.com", logo: "/brand/usdg.png" },
   { name: "Chainlink", url: "https://chain.link", logo: "/brand/logos/chainlink.svg" },
   { name: "DexScreener", url: "https://dexscreener.com/robinhood", logo: "/brand/logos/dexscreener.png" },
-  { name: "Solidity", url: "https://soliditylang.org", logo: "/brand/logos/solidity.svg" },
-  { name: "React", url: "https://react.dev", logo: "/brand/logos/react.svg" },
 ];
 
 type Position = { burns: bigint[]; claimable: bigint };

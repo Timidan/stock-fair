@@ -18,7 +18,7 @@ A new round every US market day, on Robinhood Chain mainnet.
 
 </div>
 
-<img src="docs/screens/live.jpg" alt="The live page: four braziers for AAPL, NVDA, TSLA and SPY, with live Chainlink prices and the $WIF burned on each">
+<img src="docs/screens/live.jpg" alt="The live page after round 1: four fire-lit cauldrons for AAPL, NVDA, TSLA and SPY, each burning its $WIF total, under the pot and the countdown to the next round">
 
 Every weekday, Stock Fair opens a round on four Stock Tokens: AAPL, NVDA, TSLA and SPY. Before the US market opens, $WIF holders burn $WIF on the stock they think will gain most by the close. At the close, the contract reads Chainlink's prices on chain. Everyone who backed the winner splits 80% of the pot in proportion to their burn, and 20% rolls into the next round. It is the WIF team's own format, burn to vote, pointed at the stocks on Robinhood Chain.
 
@@ -107,7 +107,7 @@ Every round the contract has run, with links to each transaction. The table is r
 ## Try it
 
 1. Open the [live app](https://stock-fair.timidan.xyz). It shows the round, live Chainlink prices and the $WIF burned on each stock, with no wallet needed.
-2. To play, connect a wallet on Robinhood Chain that holds $WIF, pick a brazier and press **Burn and pick**.
+2. To play, connect a wallet on Robinhood Chain that holds $WIF, pick a cauldron and press **Burn and pick**.
 3. After the close, the oracle tablet shows the result. Winners press **Claim USDG**.
 
 ## Quickstart

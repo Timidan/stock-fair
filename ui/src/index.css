@@ -61,7 +61,6 @@ body::before { content: ""; position: fixed; inset: 0; z-index: -1; background: 
 .symbol { font-family: var(--serif); font-size: clamp(20px, 3vw, 28px); font-weight: 600; letter-spacing: 0.12em; margin-top: -4%; }
 .symbol i { display: inline-block; width: 0.8em; height: 0.8em; margin-right: 0.4em; vertical-align: -0.06em; background: var(--flame); -webkit-mask: var(--logo) center / contain no-repeat; mask: var(--logo) center / contain no-repeat; }
 .altar.selected .symbol { color: var(--flame); }
-.altar.winner .symbol { color: var(--gold); }
 .price { font-size: 17px; font-variant-numeric: tabular-nums; margin-top: 6px; }
 .move { font-size: 14px; font-variant-numeric: tabular-nums; }
 .move.up { color: var(--up); }

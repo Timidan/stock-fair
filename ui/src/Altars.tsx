@@ -13,7 +13,6 @@ type Props = {
   shares: number[];
   burned: number[];
   returns: (number | null)[];
-  winners: boolean[];
   selected: number | null;
   onSelect: (i: number) => void;
   onTap: () => void;
@@ -22,7 +21,7 @@ type Props = {
   ready: boolean;
 };
 
-export function Altars({ prices, markets, shares, burned, returns, winners, selected, onSelect, onTap, flares, pickable, ready }: Props) {
+export function Altars({ prices, markets, shares, burned, returns, selected, onSelect, onTap, flares, pickable, ready }: Props) {
   const [peek, setPeek] = useState<number | null>(null);
 
   // Touch has no hover: a tap opens a stock's details, and a tap anywhere else closes them.
@@ -42,7 +41,7 @@ export function Altars({ prices, markets, shares, burned, returns, winners, sele
             role={pickable ? "radio" : undefined}
             aria-checked={pickable ? selected === i : undefined}
             aria-expanded={pickable ? undefined : peek === i}
-            className={`altar${selected === i ? " selected" : ""}${winners[i] ? " winner" : ""}${peek === i ? " peek" : ""}`}
+            className={`altar${selected === i ? " selected" : ""}${peek === i ? " peek" : ""}`}
             onClick={() => {
               setPeek(peek === i ? null : i);
               if (pickable) onSelect(i);

@@ -29,7 +29,6 @@ const POWERED = [
   { name: "DexScreener", url: "https://dexscreener.com/robinhood", logo: "/brand/logos/dexscreener.png" },
 ];
 
-type Position = { burns: bigint[]; claimable: bigint };
 type Balances = { wif: bigint; usdg: bigint; eth: bigint };
 
 const TOKENS = [
@@ -46,7 +45,8 @@ export default function App() {
   const [selected, setSelected] = useState<number | null>(null);
   const [amount, setAmount] = useState("100");
   const [account, setAccount] = useState<Address | null>(null);
-  const [position, setPosition] = useState<Position | null>(null);
+  const [burns, setBurns] = useState<bigint[] | null>(null);
+  const [claims, setClaims] = useState<{ id: bigint; owed: bigint }[]>([]);
   const [balances, setBalances] = useState<Balances | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<{ text: string; tx?: string; error?: boolean } | null>(null);
@@ -65,24 +65,30 @@ export default function App() {
   }, [nudge]);
   useEffect(() => watchAccount(setAccount), []);
 
-  const totals = round?.totals ?? ASSETS.map(() => 0n);
+  // A finished round moves down to the history, and the top of the page looks ahead to the next one.
+  const live = round && round.state !== "Settled" && round.state !== "Void" ? round : null;
+  const totals = live?.totals ?? ASSETS.map(() => 0n);
   const sum = totals.reduce((a, b) => a + b, 0n);
   const shares = totals.map((t) => (sum ? Number((t * 10_000n) / sum) / 10_000 : 0));
-  const winners = ASSETS.map((_, i) => round?.state === "Settled" && ((round.winnerMask >> i) & 1) === 1);
   const open = round != null && round.state === "Open" && now < round.lockAt;
   useEffect(() => { if (!open) setSelected(null); }, [open]);
   const settleable = round != null && (round.state === "Open" || round.state === "Locked") && now > round.endAt;
 
   useEffect(() => {
-    if (!account || !round || !STOCK_FAIR) return setPosition(null);
+    if (!account || !live || !STOCK_FAIR) return setBurns(null);
+    client.readContract({ address: STOCK_FAIR, abi: stockFairAbi, functionName: "userWeights", args: [live.id, account] })
+      .then((b) => setBurns([...(b as readonly bigint[])]))
+      .catch(() => setBurns(null));
+  }, [account, live?.id, live?.totals.join(), refresh]);
+
+  // Winnings stay claimable after the next round opens, so they follow the history, not the latest round.
+  useEffect(() => {
+    if (!account || !STOCK_FAIR) return setClaims([]);
     const address = STOCK_FAIR;
-    Promise.all([
-      client.readContract({ address, abi: stockFairAbi, functionName: "userWeights", args: [round.id, account] }),
-      client.readContract({ address, abi: stockFairAbi, functionName: "claimable", args: [round.id, account] }),
-    ])
-      .then(([burns, claimable]) => setPosition({ burns: [...(burns as readonly bigint[])], claimable: claimable as bigint }))
-      .catch(() => setPosition(null));
-  }, [account, round?.id, round?.state, round?.totals.join(), refresh]);
+    Promise.all(past.map((p) => client.readContract({ address, abi: stockFairAbi, functionName: "claimable", args: [p.id, account] }) as Promise<bigint>))
+      .then((owed) => setClaims(past.map((p, i) => ({ id: p.id, owed: owed[i] })).filter((c) => c.owed > 0n)))
+      .catch(() => setClaims([]));
+  }, [account, past.map((p) => p.id).join(), refresh]);
 
   useEffect(() => {
     if (!account) return setBalances(null);
@@ -159,12 +165,12 @@ export default function App() {
       return { text: "Round settled.", tx: hash };
     });
 
-  const claim = () =>
+  const claim = (id: bigint) =>
     run("Check your wallet…", async ({ wallet, account }) => {
-      if (!round || !STOCK_FAIR) return;
-      const owed = (await client.readContract({ address: STOCK_FAIR, abi: stockFairAbi, functionName: "claimable", args: [round.id, account] })) as bigint;
+      if (!STOCK_FAIR) return;
+      const owed = (await client.readContract({ address: STOCK_FAIR, abi: stockFairAbi, functionName: "claimable", args: [id, account] })) as bigint;
       if (owed === 0n) return { text: "This wallet has nothing to claim in this round." };
-      const hash = await wallet.writeContract({ account, address: STOCK_FAIR, abi: stockFairAbi, functionName: "claim", args: [round.id] });
+      const hash = await wallet.writeContract({ account, address: STOCK_FAIR, abi: stockFairAbi, functionName: "claim", args: [id] });
       await client.waitForTransactionReceipt({ hash });
       return { text: `Claimed ${fmt(owed, 6, 2)} USDG.`, tx: hash };
     });
@@ -172,14 +178,22 @@ export default function App() {
   // The keeper opens each weekday's round on its first run after 00:00 UTC.
   const nextOpen = (t: number) => { let d = Math.floor(t / 86400) + 1; while ([0, 6].includes(new Date(d * 86400000).getUTCDay())) d++; return d * 86400; };
 
+  const next = round ? nextOpen(round.endAt) : 0;
+  // Chainlink's stock feeds go quiet after Friday's close and resume at 00:00 UTC on Monday, when the next round opens.
+  const weekend = round != null && !live && now < next && next - round.endAt > 86400;
+  // Before it opens, the next pot is the last sponsor deposit plus everything carried forward.
+  const pot = round ? (live ? round.pot : round.pot - round.carriedIn + carry) : 0n;
+  const carried = live ? live.carriedIn : carry;
+
   const clock: { label: string; at?: number } =
     round === undefined ? { label: "Lighting the fires…" }
     : !round ? { label: "First round opens soon" }
     : open ? { label: "Picks close in", at: round.lockAt }
-    : round.state === "Open" || round.state === "Locked" ? (now < round.endAt ? { label: "Picks locked · settles in", at: round.endAt } : { label: "Ready to settle" })
-    : { label: `Round ${round.id} ${round.state === "Settled" ? "settled" : "void"} · next opens in`, at: nextOpen(now) };
+    : live ? (now < live.endAt ? { label: "Picks locked · settles in", at: live.endAt } : { label: "Ready to settle" })
+    : now < next ? { label: `Round ${round.id + 1n} opens in`, at: next }
+    : { label: `Round ${round.id + 1n} opens soon` };
 
-  const myBurns = position?.burns.map((b, i) => (b > 0n ? `${fmt(b, 18)} on ${ASSETS[i].symbol}` : null)).filter(Boolean);
+  const myBurns = burns?.map((b, i) => (b > 0n ? `${fmt(b, 18)} on ${ASSETS[i].symbol}` : null)).filter(Boolean);
   const short = account && `${account.slice(0, 6)}…${account.slice(-4)}`;
   const connectWallet = () => {
     setNudge(false);
@@ -206,8 +220,7 @@ export default function App() {
       <p className="lede">
         <span>
           {!round ? "Call it right and split the pot."
-            : round.state === "Settled" ? <>Winners split <Usdg v={round.payoutBase} />.{carry > 0n && <> <Usdg v={carry} /> carries into the next round.</>}</>
-            : <>Call it right and split <Usdg v={(round.pot * 8n) / 10n} />.{round.carriedIn > 0n && <small>Includes {fmt((round.carriedIn * 8n) / 10n, 6, 2)} carried from earlier rounds.</small>}</>}
+            : <>Call it right and split <Usdg v={(pot * 8n) / 10n} />.{carried > 0n && <small>Includes {fmt((carried * 8n) / 10n, 6, 2)} carried from earlier rounds.</small>}</>}
         </span>
       </p>
 
@@ -222,13 +235,10 @@ export default function App() {
         markets={markets}
         shares={shares}
         burned={totals.map((t) => Number(formatUnits(t, 18)))}
-        returns={ASSETS.map((_, i) =>
-          reading ? reading.end[i] / reading.start[i] - 1 : startPrices[i] && prices[i] ? prices[i]!.price / startPrices[i]! - 1 : null,
-        )}
-        winners={winners}
+        returns={ASSETS.map((_, i) => (live && startPrices[i] && prices[i] ? prices[i]!.price / startPrices[i]! - 1 : null))}
         selected={selected}
         onSelect={(i) => setSelected((s) => (s === i ? null : i))}
-        onTap={() => { if (!account && !open) setNudge(true); }}
+        onTap={() => { if (!open) setNudge(true); }}
         pickable={open}
         ready={round !== undefined}
         flares={flares.map((n, i) => n + ownFlares[i])}
@@ -264,10 +274,17 @@ export default function App() {
         </section>
       )}
 
-      {round?.state === "Settled" && (!account || (position?.claimable ?? 0n) > 0n) && (
+      {claims.map((c) => (
+        <section className="panel" key={c.id.toString()}>
+          <p className="note">You won <b>{fmt(c.owed, 6, 2)} USDG</b> in round {c.id.toString()}.</p>
+          <button className="pill lime" onClick={() => claim(c.id)} disabled={busy}>Claim USDG</button>
+        </section>
+      ))}
+
+      {!account && !live && reading && (
         <section className="panel">
-          <p className="note">{position ? <>You won <b>{fmt(position.claimable, 6, 2)} USDG</b>.</> : "Backed the winner? Connect to collect."}</p>
-          <button className="pill lime" onClick={claim} disabled={busy}>{position ? "Claim USDG" : "Check and claim"}</button>
+          <p className="note">Backed the winner? Connect to collect.</p>
+          <button className="pill lime" onClick={connectWallet}>Check and claim</button>
         </section>
       )}
 
@@ -331,10 +348,10 @@ export default function App() {
         </dialog>
       )}
 
-      {nudge && !account && (
+      {nudge && (weekend || !account) && (
         <div className="nudge" role="status">
-          <span>Picks are closed. Connect your wallet to burn in the next round.</span>
-          <button className="pill lime" onClick={connectWallet}>Connect</button>
+          <span>{weekend ? "Prices don't update on weekends. These are Friday's last prices." : "Picks are closed."}{!account && " Connect your wallet to burn in the next round."}</span>
+          {!account && <button className="pill lime" onClick={connectWallet}>Connect</button>}
         </div>
       )}
 

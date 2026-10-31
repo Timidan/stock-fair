@@ -91,18 +91,16 @@ export type Round = {
   endAt: number;
   pot: bigint;
   state: (typeof STATES)[number];
-  winnerMask: number;
   totals: bigint[];
   carriedIn: bigint;
-  payoutBase: bigint;
 };
 
 type RawRound = {
   lockAt: bigint; endAt: bigint; pot: bigint; sponsor: string; state: number;
-  startPrices: readonly bigint[]; endPrices: readonly bigint[]; winnerMask: bigint; carriedIn: bigint; payoutBase: bigint;
+  startPrices: readonly bigint[]; endPrices: readonly bigint[]; winnerMask: bigint; carriedIn: bigint;
 };
 
-export type Past = { id: bigint; winnerMask: number; pot: bigint; burned: bigint; state: (typeof STATES)[number] };
+export type Past = { id: bigint; winnerMask: number; pot: bigint; burned: bigint; state: (typeof STATES)[number]; start: number[]; end: number[] };
 
 export type Fair = {
   round: Round | null | undefined;
@@ -120,6 +118,7 @@ export function useFair(refresh: number): Fair {
   const [fair, setFair] = useState<Fair>({ round: undefined, past: [], offline: false, carry: 0n, prices: ASSETS.map(() => null), startPrices: ASSETS.map(() => null), reading: null, flares: ASSETS.map(() => 0) });
   const seen = useRef<{ block: bigint | null; round: bigint | null }>({ block: null, round: null });
   const starts = useRef<{ round: bigint; prices: (number | null)[] } | null>(null); // a round's lock prices never change
+  const settleTx = useRef(new Map<bigint, string>());
 
   useEffect(() => {
     let alive = true;
@@ -138,8 +137,7 @@ export function useFair(refresh: number): Fair {
           ])) as [RawRound, readonly bigint[]];
           round = {
             id, sponsor: raw.sponsor, lockAt: Number(raw.lockAt), endAt: Number(raw.endAt), pot: raw.pot,
-            state: STATES[raw.state], winnerMask: Number(raw.winnerMask), totals: [...totals],
-            carriedIn: raw.carriedIn, payoutBase: raw.payoutBase,
+            state: STATES[raw.state], totals: [...totals], carriedIn: raw.carriedIn,
           };
           carry = (await client.readContract({ address, abi: stockFairAbi, functionName: "carry" })) as bigint;
           // Show the round now: everything below only adds to it.
@@ -151,32 +149,38 @@ export function useFair(refresh: number): Fair {
             startPrices = starts.current.prices;
           }
           const head = await client.getBlockNumber();
-          if (round.state === "Settled") {
-            // The tx link is a nicety: a bounded log search that may fail must not hide the result.
-            const logs = await client
-              .getContractEvents({ address, abi: stockFairAbi, eventName: "Settled", args: { roundId: id }, fromBlock: head > 20_000n ? head - 20_000n : 0n })
-              .catch(() => []);
-            reading = {
-              roundId: id, winnerMask: round.winnerMask, tx: logs[0]?.transactionHash ?? "",
-              start: raw.startPrices.map((p) => Number(p) / 1e8), end: raw.endPrices.map((p) => Number(p) / 1e8),
-            };
-          }
           // New burns since the last poll make their fire flare (anyone's burn, not just this wallet's).
           if (seen.current.round === id && seen.current.block != null && head > seen.current.block) {
             const votes = await client.getContractEvents({ address, abi: stockFairAbi, eventName: "Voted", args: { roundId: id }, fromBlock: seen.current.block + 1n, toBlock: head });
             for (const v of votes) bumps[Number((v.args as { assetIndex: bigint }).assetIndex)]++;
           }
           seen.current = { block: head, round: id };
-          const older = Array.from({ length: Math.min(5, Number(count) - 1) }, (_, k) => count - 1n - BigInt(k));
+          // The latest round joins the history once it's finished. Twelve rounds covers the fair up to the final.
+          const last = round.state === "Settled" || round.state === "Void" ? count : count - 1n;
+          const older = Array.from({ length: Math.min(12, Number(last)) }, (_, k) => last - BigInt(k));
           past = await Promise.all(
             older.map(async (pid) => {
               const [r, t] = (await Promise.all([
                 client.readContract({ address, abi: stockFairAbi, functionName: "rounds", args: [pid] }),
                 client.readContract({ address, abi: stockFairAbi, functionName: "assetTotals", args: [pid] }),
               ])) as [RawRound, readonly bigint[]];
-              return { id: pid, winnerMask: Number(r.winnerMask), pot: r.pot, burned: t.reduce((x, y) => x + y, 0n), state: STATES[r.state] };
+              return {
+                id: pid, winnerMask: Number(r.winnerMask), pot: r.pot, burned: t.reduce((x, y) => x + y, 0n), state: STATES[r.state],
+                start: r.startPrices.map((p) => Number(p) / 1e8), end: r.endPrices.map((p) => Number(p) / 1e8),
+              };
             }),
           );
+          const settled = past.find((p) => p.state === "Settled");
+          if (settled) {
+            // The tx link is a nicety: a bounded log search that may fail must not hide the result. The RPC allows about 5M blocks, roughly 6 days.
+            if (!settleTx.current.has(settled.id)) {
+              const logs = await client
+                .getContractEvents({ address, abi: stockFairAbi, eventName: "Settled", args: { roundId: settled.id }, fromBlock: head > 5_000_000n ? head - 5_000_000n : 0n })
+                .catch(() => []);
+              if (logs[0]) settleTx.current.set(settled.id, logs[0].transactionHash);
+            }
+            reading = { roundId: settled.id, winnerMask: settled.winnerMask, tx: settleTx.current.get(settled.id) ?? "", start: settled.start, end: settled.end };
+          }
         }
       }
       const prices = await pricesRead;
